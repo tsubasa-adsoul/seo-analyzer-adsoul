@@ -867,7 +867,7 @@ class SEOAnalyzerStreamlit:
             
         except Exception as e:
             return f"AI分析エラー: {str(e)}"
-
+            
 
 def check_auth():
     """認証画面"""
@@ -892,8 +892,6 @@ def check_auth():
     else:
         return True
 
-
-
 def main():
     st.set_page_config(
         page_title="SEO分析ツール - Streamlit版",
@@ -901,8 +899,14 @@ def main():
         layout="wide"
     )
     
+    # 認証チェック（ここに追加！）
+    if not check_auth():
+        st.stop()
+    
     st.title("🚀 SEO分析ツール - Streamlit版")
     st.markdown("---")
+
+
     
     # 分析器初期化
     if 'analyzer' not in st.session_state:
@@ -2132,6 +2136,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
