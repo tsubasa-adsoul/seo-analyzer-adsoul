@@ -104,25 +104,20 @@ class SEOAnalyzerStreamlit:
                 return credentials
             else:
                 # ローカルファイルから読み込み（フォールバック）
-                credentials = service_account.Credentials.from_service_account_file(
-                    self.credentials_file, scopes=self.scopes
-                )
-                return credentials
+                from google.oauth2 import service_account
+                credentials_file = self.config.get('credentials_file', 'credentials/gemini-analysis-467706-e19bcd6a67bb.json')
+                if os.path.exists(credentials_file):
+                    credentials = service_account.Credentials.from_service_account_file(
+                        credentials_file, scopes=self.scopes
+                    )
+                    return credentials
+                else:
+                    st.error("認証ファイルが見つかりません")
+                    return None
         except Exception as e:
             st.error(f"認証エラー: {e}")
             return None
-    
-    def init_services(self):
-        """APIサービス初期化"""
-        if not self.credentials:
-            return False
-        try:
-            self.gsc_service = build('searchconsole', 'v1', credentials=self.credentials)
-            self.ga4_service = build('analyticsdata', 'v1beta', credentials=self.credentials)
-            return True
-        except Exception as e:
-            st.error(f"サービス初期化エラー: {e}")
-            return False
+
 
     
     def get_gsc_data(self, site_url, current_start, current_end, comparison_start, comparison_end):
@@ -2097,3 +2092,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
