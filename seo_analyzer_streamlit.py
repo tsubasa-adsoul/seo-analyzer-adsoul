@@ -25,8 +25,11 @@ class SEOAnalyzerStreamlit:
         if not self.config:
             self.config = self.load_local_config()
         
-        self.credentials_file = self.config.get('credentials_file', 'credentials/gemini-analysis-467706-e19bcd6a67bb.json')
-        self.gemini_api_key = self.config.get('gemini_api_key')
+        # この行を削除またはコメントアウト
+        # self.credentials_file = self.config.get('credentials_file', 'credentials/gemini-analysis-467706-e19bcd6a67bb.json')
+        
+        # APIキーをSecretsから取得
+        self.gemini_api_key = st.secrets.get('gemini_api_key', self.config.get('gemini_api_key'))
         
         self.scopes = [
             'https://www.googleapis.com/auth/webmasters.readonly',
@@ -56,6 +59,7 @@ class SEOAnalyzerStreamlit:
         except Exception as e:
             st.error(f"❌ スプレッドシート履歴機能エラー: {e}")
             self.sheet_logger = None
+
 
     
     def load_config_from_spreadsheet(self):
@@ -2092,4 +2096,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
