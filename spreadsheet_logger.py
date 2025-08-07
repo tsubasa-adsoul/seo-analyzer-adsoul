@@ -3,7 +3,7 @@ from datetime import datetime
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import streamlit as st
-import os  # 
+import os
 
 class SpreadsheetLogger:
     def __init__(self, config):
@@ -12,13 +12,35 @@ class SpreadsheetLogger:
         self.spreadsheet_id = config.get('default_spreadsheet_id')
         self.init_sheets_service()
     
+    def get_credentials(self):
+        """認証情報を取得（Secrets対応）"""
+        try:
+            # Secretsから読み込み
+            if 'gcp_service_account' in st.secrets:
+                credentials_dict = dict(st.secrets["gcp_service_account"])
+                credentials = service_account.Credentials.from_service_account_info(
+                    credentials_dict,
+                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                )
+                return credentials
+            else:
+                # ローカルファイルから読み込み
+                credentials = service_account.Credentials.from_service_account_file(
+                    self.config['credentials_file'],
+                    scopes=['https://www.googleapis.com/auth/spreadsheets']
+                )
+                return credentials
+        except Exception as e:
+            st.error(f"認証エラー: {e}")
+            return None
+    
     def init_sheets_service(self):
         """Sheets APIを初期化"""
         try:
-            credentials = service_account.Credentials.from_service_account_file(
-                self.config['credentials_file'],
-                scopes=['https://www.googleapis.com/auth/spreadsheets']
-            )
+            credentials = self.get_credentials()
+            if not credentials:
+                return
+                
             self.sheets_service = build('sheets', 'v4', credentials=credentials)
             
             # 履歴シートを作成/確認
