@@ -868,6 +868,32 @@ class SEOAnalyzerStreamlit:
         except Exception as e:
             return f"AI分析エラー: {str(e)}"
 
+
+def check_auth():
+    """認証画面"""
+    def credentials_entered():
+        if (st.session_state["username"] == "adsoul" and 
+            st.session_state["password"] == "ad20240827pao"):
+            st.session_state["authenticated"] = True
+        else:
+            st.session_state["authenticated"] = False
+
+    if "authenticated" not in st.session_state:
+        st.text_input("ユーザー名", key="username")
+        st.text_input("パスワード", type="password", key="password")
+        st.button("ログイン", on_click=credentials_entered)
+        return False
+    elif not st.session_state["authenticated"]:
+        st.text_input("ユーザー名", key="username")
+        st.text_input("パスワード", type="password", key="password")
+        st.button("ログイン", on_click=credentials_entered)
+        st.error("認証に失敗しました")
+        return False
+    else:
+        return True
+
+
+
 def main():
     st.set_page_config(
         page_title="SEO分析ツール - Streamlit版",
@@ -2106,6 +2132,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
