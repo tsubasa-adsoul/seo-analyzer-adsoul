@@ -89,16 +89,7 @@ class SEOAnalyzerStreamlit:
                 return config
         return {'search_engine_id': '734633bb3016e4892'}
     
-    def load_credentials(self):
-        """認証情報読み込み"""
-        try:
-            credentials = service_account.Credentials.from_service_account_file(
-                self.credentials_file, scopes=self.scopes
-            )
-            return credentials
-        except Exception as e:
-            st.error(f"認証エラー: {e}")
-            return None
+undefined
     
     def init_services(self):
         """APIサービス初期化"""
@@ -2085,3 +2076,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
