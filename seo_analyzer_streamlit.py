@@ -122,7 +122,17 @@ class SEOAnalyzerStreamlit:
             st.error(f"認証エラー: {e}")
             return None
 
-
+    def init_services(self):
+        """APIサービス初期化"""
+        if not self.credentials:
+            return False
+        try:
+            self.gsc_service = build('searchconsole', 'v1', credentials=self.credentials)
+            self.ga4_service = build('analyticsdata', 'v1beta', credentials=self.credentials)
+            return True
+        except Exception as e:
+            st.error(f"サービス初期化エラー: {e}")
+            return False
     
     def get_gsc_data(self, site_url, current_start, current_end, comparison_start, comparison_end):
         """GSCデータ取得（メモリ効率改善版）"""
@@ -2096,5 +2106,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
