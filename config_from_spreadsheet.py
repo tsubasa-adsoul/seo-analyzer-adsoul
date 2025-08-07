@@ -3,6 +3,7 @@ import json
 import os
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+import streamlit as st
 
 class SpreadsheetConfigLoader:
     def __init__(self, spreadsheet_id='1gwLASONia-UIaXuQV0S7nQn8oHpz7F_ONMC_rlAM15s'):
@@ -10,28 +11,50 @@ class SpreadsheetConfigLoader:
         self.config_sheet_name = 'サイト設定'  # 新しいシート名
         self.credentials_file = 'credentials/gemini-analysis-467706-e19bcd6a67bb.json'
         
+    def get_credentials(self):
+        """認証情報を取得（Secrets対応）"""
+        try:
+            # Secretsから読み込み
+            if 'gcp_service_account' in st.secrets:
+                credentials_dict = dict(st.secrets["gcp_service_account"])
+                credentials = service_account.Credentials.from_service_account_info(
+                    credentials_dict,
+                    scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
+                )
+                return credentials
+            else:
+                # ローカルファイルから読み込み
+                credentials = service_account.Credentials.from_service_account_file(
+                    self.credentials_file,
+                    scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
+                )
+                return credentials
+        except Exception as e:
+            st.error(f"認証エラー: {e}")
+            return None
+        
     def load_sites_from_spreadsheet(self):
-        """スプレチE��シートからサイト情報を読み込む"""
+        """スプレッドシートからサイト情報を読み込む"""
         try:
             # 認証
-            credentials = service_account.Credentials.from_service_account_file(
-                self.credentials_file,
-                scopes=['https://www.googleapis.com/auth/spreadsheets.readonly']
-            )
+            credentials = self.get_credentials()
+            if not credentials:
+                return None
+                
             service = build('sheets', 'v4', credentials=credentials)
             
-            # スプレチE��シートから読み込み
-            # A刁E サイト名, B刁E URL, C刁E GA4 ID, D刁E 個別スプレチE��シーチED�E�オプション�E�E
+            # スプレッドシートから読み込み
+            # A列: サイト名, B列: URL, C列: GA4 ID, D列: 個別スプレッドシートID（オプション）
             result = service.spreadsheets().values().get(
                 spreadsheetId=self.spreadsheet_id,
-                range=f'{self.config_sheet_name}!A2:D100'  # ヘッダー行をスキチE�E
+                range=f'{self.config_sheet_name}!A2:D100'  # ヘッダー行をスキップ
             ).execute()
             
             values = result.get('values', [])
             sites = []
             
             for row in values:
-                if len(row) >= 3 and row[0] and row[1] and row[2]:  # 忁E��頁E��チェチE��
+                if len(row) >= 3 and row[0] and row[1] and row[2]:  # 必須項目チェック
                     site = {
                         "name": row[0].strip(),
                         "gsc_url": row[1].strip(),
@@ -43,14 +66,14 @@ class SpreadsheetConfigLoader:
             return sites
             
         except Exception as e:
-            print(f"スプレチE��シート読み込みエラー: {e}")
+            print(f"スプレッドシート読み込みエラー: {e}")
             return None
     
     def create_config_with_sites(self, sites):
-        """サイト情報を含む完�Eな設定を作�E"""
+        """サイト情報を含む完全な設定を作成"""
         config = {
             "gemini_api_key": "AIzaSyA8meCgGFsO9VNztFaGXv2Q39N_vPvonz0",
-            "credentials_file":"credentials/gemini-analysis-467706-e19bcd6a67bb.json",
+            "credentials_file": "credentials/gemini-analysis-467706-e19bcd6a67bb.json",
             "default_spreadsheet_id": self.spreadsheet_id,
             "sites": sites,
             "analysis_settings": {
