@@ -89,7 +89,28 @@ class SEOAnalyzerStreamlit:
                 return config
         return {'search_engine_id': '734633bb3016e4892'}
     
-undefined
+    def load_credentials(self):
+        """認証情報読み込み"""
+        try:
+            # Secretsから読み込み
+            if 'gcp_service_account' in st.secrets:
+                from google.oauth2 import service_account
+                
+                # Secretsから認証情報を構築
+                credentials_dict = dict(st.secrets["gcp_service_account"])
+                credentials = service_account.Credentials.from_service_account_info(
+                    credentials_dict, scopes=self.scopes
+                )
+                return credentials
+            else:
+                # ローカルファイルから読み込み（フォールバック）
+                credentials = service_account.Credentials.from_service_account_file(
+                    self.credentials_file, scopes=self.scopes
+                )
+                return credentials
+        except Exception as e:
+            st.error(f"認証エラー: {e}")
+            return None
     
     def init_services(self):
         """APIサービス初期化"""
@@ -2076,4 +2097,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
