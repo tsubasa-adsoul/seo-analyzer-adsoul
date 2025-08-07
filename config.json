@@ -1,0 +1,9 @@
+{
+  "gemini_api_key": "AIzaSyA8meCgGFsO9VNztFaGXv2Q39N_vPvonz0",
+  "google_api_key": "AIzaSyC5dKbs0p5aTC_3j5UaNTrW3FlXnTuTwBg",
+  "credentials_file": "credentials/gemini-analysis-467706-e19bcd6a67bb.json",
+  "default_spreadsheet_id": "1gwLASONia-UIaXuQV0S7nQn8oHpz7F_ONMC_rlAM15s",
+  "search_engine_id": "734633bb3016e4892",
+  "drive_log_folder_name": "SEO分析ログ",
+  "drive_parent_folder_id": "1n3dh0rm_PvK2Bft_xQXbn49UuSlAuo8Y"
+}
