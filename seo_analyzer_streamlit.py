@@ -790,9 +790,6 @@ class SEOAnalyzerStreamlit:
             combined_analysis = f"""
 {basic_analysis}
 
-
-
-
 ============================================================
 🔍 競合分析結果
 ============================================================
@@ -802,13 +799,14 @@ class SEOAnalyzerStreamlit:
             return combined_analysis
         else:
             return basic_analysis
-
-       def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト"""
-        if not self.gemini_model:
-            return "Gemini APIが設定されていません"
+    
+    def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):  # ← 4スペース！
+        """分析結果を基に記事をリライト"""  # ← 8スペース
+        if not self.gemini_model:  # ← 8スペース
+            return "Gemini APIが設定されていません"  # ← 12スペース
         
-        try:
+        try:  # ← 8スペース
+            prompt = f"""  # ← 12スペース
             prompt = f"""
             あなたはSEOライティングの専門家です。以下の分析結果と元記事情報を基に、検索順位1位を目指す記事にリライトしてください。
             
@@ -2383,6 +2381,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
