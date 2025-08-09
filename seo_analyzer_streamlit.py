@@ -790,6 +790,69 @@ class SEOAnalyzerStreamlit:
             combined_analysis = f"""
 {basic_analysis}
 
+    def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
+        """分析結果を基に記事をリライト"""
+        if not self.gemini_model:
+            return "Gemini APIが設定されていません"
+        
+        try:
+            prompt = f"""
+            あなたはSEOライティングの専門家です。以下の分析結果と元記事情報を基に、検索順位1位を目指す記事にリライトしてください。
+            
+            【ターゲットキーワード】
+            {keyword}
+            
+            【元の記事URL】
+            {url}
+            
+            【元の記事構造】
+            現在のタイトル: {original_content.get('title', '')}
+            現在のH1: {original_content.get('h1', '')}
+            現在のH2見出し: {', '.join(original_content.get('h2_list', []))}
+            
+            【AI分析での改善提案】
+            {analysis_text}
+            
+            【リライト要件】
+            以下の形式で、コピペですぐ使えるHTMLとして出力してください：
+            
+            1. SEO最適化されたタイトルタグ（32文字以内、キーワード含む）
+            2. 魅力的なメタディスクリプション（120文字以内）
+            3. 改善されたH1タグ
+            4. 最適化されたH2構造（5-7個、キーワード関連）
+            5. 各セクションの本文（300-500文字、具体的で価値のある内容）
+            6. まとめセクション
+            
+            【出力形式】
+            ```html
+            <title>ここにタイトル</title>
+            <meta name="description" content="ここにメタディスクリプション">
+            
+            <h1>ここにH1</h1>
+            
+            <p>導入文（200-300文字）</p>
+            
+            <h2>見出し1</h2>
+            <p>本文...</p>
+            
+            <h2>見出し2</h2>
+            <p>本文...</p>
+            
+            （以下同様）
+            
+            <h2>まとめ</h2>
+            <p>まとめ文...</p>
+            ```
+            
+            キーワード「{keyword}」を自然に配置し、ユーザーの検索意図を満たす有益な内容にしてください。
+            """
+            
+            response = self.gemini_model.generate_content(prompt)
+            return response.text
+            
+        except Exception as e:
+            return f"リライト生成エラー: {str(e)}"
+
 ============================================================
 🔍 競合分析結果
 ============================================================
@@ -1176,6 +1239,7 @@ def main():
             "🎯 検索意図分析",
             "📝 記事詳細分析",
             "📚 分析履歴",
+            "✍️ AIリライト", 
             "💬 AIアシスタント"
         ])
 
@@ -1967,7 +2031,153 @@ def main():
             else:
                 st.info("まだ分析履歴がありません")
 
-        with tabs[7]:  # AIチャット
+        with tabs[7]:  # AIリライト
+            st.header("✍️ AIリライト機能")
+            st.caption("分析済みの記事をAIがSEO最適化してリライトします")
+            
+            # 履歴読み込み
+            history = analyzer.load_analysis_history(site_name=selected_site_name, limit=50)
+            
+            if history:
+                # 履歴から選択
+                st.subheader("📝 リライトする記事を選択")
+                
+                # 選択用のリスト作成
+                options = []
+                for i, item in enumerate(history):
+                    option_text = f"{item['timestamp']} - {item['keyword']} ({item['mode']})"
+                    options.append(option_text)
+                
+                selected_index = st.selectbox(
+                    "分析履歴から選択",
+                    range(len(options)),
+                    format_func=lambda x: options[x],
+                    key="rewrite_select"
+                )
+                
+                if selected_index is not None:
+                    selected_item = history[selected_index]
+                    
+                    # 選択された記事の情報表示
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.info(f"""
+                        **キーワード:** {selected_item['keyword']}  
+                        **URL:** {selected_item['url']}  
+                        **分析日時:** {selected_item['timestamp']}  
+                        **分析モード:** {selected_item['mode']}
+                        """)
+                    
+                    with col2:
+                        if st.button("🔄 リライト実行", type="primary", key="execute_rewrite"):
+                            with st.spinner("記事を取得してリライト中...（30秒程度かかります）"):
+                                # 元記事を再取得
+                                original_content = analyzer.fetch_article_content(
+                                    selected_item['url'],
+                                    site['gsc_url']
+                                )
+                                
+                                if original_content['success']:
+                                    # リライト実行
+                                    rewritten = analyzer.rewrite_article_with_ai(
+                                        selected_item['keyword'],
+                                        selected_item['url'],
+                                        original_content,
+                                        selected_item['analysis']
+                                    )
+                                    
+                                    # セッションに保存
+                                    st.session_state['latest_rewrite'] = {
+                                        'keyword': selected_item['keyword'],
+                                        'url': selected_item['url'],
+                                        'content': rewritten,
+                                        'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                    }
+                                    st.success("✅ リライト完了！")
+                                    st.rerun()
+                                else:
+                                    st.error("記事の取得に失敗しました")
+                
+                # リライト結果表示
+                if 'latest_rewrite' in st.session_state:
+                    st.markdown("---")
+                    st.subheader("📄 リライト結果")
+                    
+                    rewrite_data = st.session_state['latest_rewrite']
+                    
+                    # メタ情報
+                    st.caption(f"キーワード: {rewrite_data['keyword']} | 生成日時: {rewrite_data['timestamp']}")
+                    
+                    # タブで表示形式を切り替え
+                    display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
+                    
+                    with display_tabs[0]:  # プレビュー
+                        st.markdown("**リライトされた記事のプレビュー:**")
+                        # HTMLタグを除去してプレビュー表示
+                        preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
+                        st.markdown(preview_text, unsafe_allow_html=False)
+                    
+                    with display_tabs[1]:  # HTMLコード
+                        st.markdown("**コピー用HTMLコード:**")
+                        st.code(rewrite_data['content'], language='html')
+                        
+                        # コピーボタン
+                        st.download_button(
+                            label="📥 HTMLファイルとしてダウンロード",
+                            data=rewrite_data['content'],
+                            file_name=f"rewrite_{rewrite_data['keyword'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                            mime="text/html"
+                        )
+                    
+                    with display_tabs[2]:  # テキストのみ
+                        st.markdown("**テキストのみ（タグなし）:**")
+                        import re
+                        text_only = re.sub('<[^<]+?>', '', rewrite_data['content'])
+                        st.text_area("テキスト", text_only, height=500, key="text_only_display")
+                    
+                    # アクションボタン
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if st.button("📝 再リライト", key="re_rewrite"):
+                            del st.session_state['latest_rewrite']
+                            st.rerun()
+                    
+                    with col2:
+                        if st.button("💾 履歴に保存", key="save_rewrite"):
+                            # リライト結果も履歴に保存
+                            saved = analyzer.save_analysis_result(
+                                rewrite_data['keyword'],
+                                rewrite_data['url'],
+                                f"【リライト版】\n{rewrite_data['content']}",
+                                "AIリライト"
+                            )
+                            st.success(f"保存しました: {saved}")
+                    
+                    with col3:
+                        if st.button("🗑️ クリア", key="clear_rewrite"):
+                            del st.session_state['latest_rewrite']
+                            st.rerun()
+                    
+                    # 使い方のヒント
+                    with st.expander("💡 リライト結果の活用方法"):
+                        st.markdown("""
+                        1. **HTMLコード**タブから全体をコピー
+                        2. WordPressなどのCMSのHTMLエディタに貼り付け
+                        3. 必要に応じて画像や内部リンクを追加
+                        4. 公開前に最終チェック
+                        
+                        **ポイント:**
+                        - 生成された内容は必ず人間がレビューしてください
+                        - 事実関係の確認を行ってください
+                        - ブランドトーンに合わせて微調整してください
+                        """)
+            else:
+                st.info("まだ分析履歴がありません。先に記事分析を実行してください。")
+
+
+        
+
+        with tabs[8]:  # AIチャット
             st.header("💬 AIアシスタント")
             st.caption("分析結果について質問したり、SEOの相談ができます")
             
@@ -2136,6 +2346,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
