@@ -800,13 +800,12 @@ class SEOAnalyzerStreamlit:
         else:
             return basic_analysis
     
-    def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):  # ← 4スペース！
-        """分析結果を基に記事をリライト"""  # ← 8スペース
-        if not self.gemini_model:  # ← 8スペース
-            return "Gemini APIが設定されていません"  # ← 12スペース
+    def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
+        """分析結果を基に記事をリライト"""
+        if not self.gemini_model:
+            return "Gemini APIが設定されていません"
         
-        try:  # ← 8スペース
-            prompt = f"""  # ← 12スペース
+        try:
             prompt = f"""
             あなたはSEOライティングの専門家です。以下の分析結果と元記事情報を基に、検索順位1位を目指す記事にリライトしてください。
             
@@ -896,7 +895,6 @@ class SEOAnalyzerStreamlit:
             
         except Exception as e:
             return f"リライト生成エラー: {str(e)}"
-
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
         """全体的なAI分析を生成"""
@@ -2381,6 +2379,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
