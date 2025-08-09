@@ -790,7 +790,20 @@ class SEOAnalyzerStreamlit:
             combined_analysis = f"""
 {basic_analysis}
 
-    def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
+
+
+
+============================================================
+🔍 競合分析結果
+============================================================
+
+{competitive_analysis['analysis']}
+            """
+            return combined_analysis
+        else:
+            return basic_analysis
+
+       def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
         """分析結果を基に記事をリライト"""
         if not self.gemini_model:
             return "Gemini APIが設定されていません"
@@ -814,14 +827,39 @@ class SEOAnalyzerStreamlit:
             {analysis_text}
             
             【リライト要件】
-            以下の形式で、コピペですぐ使えるHTMLとして出力してください：
+            必ず上記の「AI分析での改善提案」の内容を全て反映させて、以下の形式で出力してください：
             
-            1. SEO最適化されたタイトルタグ（32文字以内、キーワード含む）
+            1. SEO最適化されたタイトルタグ
+               - 32文字以内
+               - キーワード「{keyword}」を含む
+               - 分析で提案されたタイトル案を参考にする
+            
             2. 魅力的なメタディスクリプション（120文字以内）
+               - クリック率を高める訴求
+               - キーワードを自然に含める
+            
             3. 改善されたH1タグ
-            4. 最適化されたH2構造（5-7個、キーワード関連）
-            5. 各セクションの本文（300-500文字、具体的で価値のある内容）
+               - 分析結果で指摘された問題を解決
+            
+            4. 最適化されたH2構造（5-7個）
+               - 分析で「追加すべき」と指摘されたセクションを必ず含める
+               - 競合分析で発見された不足要素をカバー
+               - 検索意図を網羅する構成
+            
+            5. 各セクションの本文（300-500文字）
+               - 分析で指摘された「不足している要素」を必ず追加
+               - 競合より詳しく、具体的な内容
+               - 数字やデータを含める
+               - ユーザーの疑問に答える内容
+            
             6. まとめセクション
+               - 次のアクションを促す
+               - 内部リンクの提案を含める
+            
+            【重要】
+            - 分析結果の「改善アクション」を全て実装すること
+            - 「競合と比較して不足している要素」を全て追加すること
+            - 提案された内部リンクやCTAを配置すること
             
             【出力形式】
             ```html
@@ -838,13 +876,21 @@ class SEOAnalyzerStreamlit:
             <h2>見出し2</h2>
             <p>本文...</p>
             
-            （以下同様）
+            <h2>見出し3</h2>
+            <p>本文...</p>
+            
+            <h2>見出し4</h2>
+            <p>本文...</p>
+            
+            <h2>見出し5</h2>
+            <p>本文...</p>
             
             <h2>まとめ</h2>
             <p>まとめ文...</p>
             ```
             
             キーワード「{keyword}」を自然に配置し、ユーザーの検索意図を満たす有益な内容にしてください。
+            分析で指摘された全ての改善点を必ず反映させてください。
             """
             
             response = self.gemini_model.generate_content(prompt)
@@ -853,15 +899,6 @@ class SEOAnalyzerStreamlit:
         except Exception as e:
             return f"リライト生成エラー: {str(e)}"
 
-============================================================
-🔍 競合分析結果
-============================================================
-
-{competitive_analysis['analysis']}
-            """
-            return combined_analysis
-        else:
-            return basic_analysis
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
         """全体的なAI分析を生成"""
@@ -2346,6 +2383,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
