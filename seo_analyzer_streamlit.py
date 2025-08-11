@@ -800,7 +800,7 @@ class SEOAnalyzerStreamlit:
         else:
             return basic_analysis
     
-            def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
+    def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
                 """分析結果を基に記事をリライト"""
                 if not self.gemini_model:
                     return "Gemini APIが設定されていません"
@@ -2340,6 +2340,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
