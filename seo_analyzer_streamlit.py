@@ -1,5 +1,4 @@
 import streamlit as st
-import os  # ← これを追加
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -801,51 +800,54 @@ class SEOAnalyzerStreamlit:
         else:
             return basic_analysis
     
-def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-    """分析結果を基に記事をリライト（安全版：保持要素＋差分検証つき）"""
-    if not self.gemini_model:
-        return "Gemini APIが設定されていません"
+            def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
+                """分析結果を基に記事をリライト"""
+                if not self.gemini_model:
+                    return "Gemini APIが設定されていません"
+                
+                try:
+                    prompt = f"""
+                    あなたはSEOライティングの専門家です。以下の元記事を、分析結果に基づいて改善してください。
+                    
+                    【ターゲットキーワード】
+                    {keyword}
+                    
+                    【元の記事URL】
+                    {url}
+                    
+                    【元の記事内容】
+                    タイトル: {original_content.get('title', '')}
+                    H1: {original_content.get('h1', '')}
+                    H2見出し: {', '.join(original_content.get('h2_list', []))}
+                    本文: {original_content.get('content_preview', '')[:3000]}
+                    
+                    【AI分析での改善提案】
+                    {analysis_text}
+                    
+                    【リライト方針】
+                    元記事の構造と内容をベースに、以下の改善のみ行ってください：
+                    
+                    1. 元記事の良い部分（約70%）は残す
+                    2. 分析で指摘された不足部分（約30%）を追加
+                    3. 既存の文章を改善（読みやすさ、具体性、改行追加）
+                    4. 新規セクションは分析で指摘されたものだけ追加
+                    5. 完全な作り直しはNG、あくまで「改良」
+                    
+                    【出力形式】
+                    - 元の文章を活かしながら改善
+                    - 「。」ごとに<br>タグで改行
+                    - FAQは実際の質問と回答をセットで記載
+                    - 不足していた要素を自然に追加
+                    
+                    改善した記事をHTML形式で出力してください。
+                    """
+                    
+                    response = self.gemini_model.generate_content(prompt)
+                    return response.text
+                    
+                except Exception as e:
+                    return f"リライト生成エラー: {str(e)}"
 
-    try:
-        # 元記事の“原型”をAIが参照できる形に束ねる（見出しと本文を明示）
-        original_text = (
-            f"【タイトル】\n{original_content.get('title','')}\n\n"
-            f"【H1】\n{original_content.get('h1','')}\n\n"
-            f"【H2一覧】\n{', '.join(original_content.get('h2_list', []))}\n\n"
-            f"【本文（プレビュー）】\n{original_content.get('content_preview','')}\n"
-        )
-
-        # 安全リライトを実行（保持要素の抽出→制約付き生成→自動検証＆リトライ）
-        rewritten_html, scores, must_keep_json = safe_rewrite(
-            self.gemini_model,
-            keyword=keyword,
-            original_html_or_text=original_text,
-            ai_suggestions_text=analysis_text,
-            style_guidelines="・冗長回避・事実改変禁止・既存トーン維持・H2/H3を適切化・『この記事では〜』は禁止",
-            max_retries=2
-        )
-
-        # 最低限の品質ゲート（URL/数値など保持率、長さ）
-        warn = []
-        if scores.get("url_keep", 1) < 0.8:  warn.append("重要URLの保持率が不足（<0.8）")
-        if scores.get("num_keep", 1) < 0.7:  warn.append("数値の保持率が不足（<0.7）")
-        if scores.get("date_keep", 1) < 0.7: warn.append("日付の保持率が不足（<0.7）")
-        if scores.get("ent_keep", 1) < 0.6:  warn.append("固有名詞の保持率が不足（<0.6）")
-        if scores.get("length_ratio", 1) < 0.6: warn.append("本文が圧縮されすぎ（<60%）")
-
-        # Streamlitの画面側に出すため、警告や差分をテキストに付加して返す
-        if warn:
-            diff = diff_preview(original_text, rewritten_html)
-            return (
-                "【警告】改悪の可能性があります：\n- " + "\n- ".join(warn) +
-                "\n\n【差分プレビュー】\n```diff\n" + diff + "\n```\n\n" +
-                rewritten_html
-            )
-
-        return rewritten_html
-
-    except Exception as e:
-        return f"リライト生成エラー: {str(e)}"
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
         """全体的なAI分析を生成"""
@@ -2097,9 +2099,17 @@ def main():
                     
                     with display_tabs[0]:  # プレビュー
                         st.markdown("**リライトされた記事のプレビュー:**")
-                        # HTMLタグを除去してプレビュー表示
-                        preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
-                        st.markdown(preview_text, unsafe_allow_html=False)
+                        content = rewrite_data['content']
+
+                        # safe_rewrite が警告を返している場合（先頭が「【警告】」）
+                        if isinstance(content, str) and content.startswith("【警告】"):
+                            st.warning("品質検証で警告が出ています。差分を確認してから下書き反映してください。")
+                            # diffコードブロックや警告文をそのままテキスト表示
+                            st.markdown(content, unsafe_allow_html=False)
+                        else:
+                            # 問題なければHTMLとしてプレビュー（見た目でチェックしやすい）
+                            st.markdown(content, unsafe_allow_html=True)
+
                     
                     with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
@@ -2330,6 +2340,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
