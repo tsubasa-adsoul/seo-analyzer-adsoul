@@ -824,24 +824,38 @@ class SEOAnalyzerStreamlit:
             return "Gemini APIが設定されていません"
         
         try:
-            # シンプルに分析結果をそのまま活かす
+            # 元記事のHTML取得（構造確認用）
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 既存の見出しを取得（重複防止）
+            existing_h2 = [h.get_text() for h in soup.find_all('h2')] if soup else []
+            existing_h3 = [h.get_text() for h in soup.find_all('h3')] if soup else []
+            
             prompt = f"""
-以下の分析結果に書かれている改善提案を、そのままHTML形式で実装してください。
-分析に書かれていないことは追加しないでください。
+あなたは記事の改善アシスタントです。
+以下の分析結果に基づいて、記事に追加すべき具体的なHTMLコンテンツを生成してください。
 
-【キーワード】
-{keyword}
+【重要な指示】
+1. 分析で指摘された改善点のみを実装
+2. 既存の見出しと重複しない新規コンテンツのみ生成
+3. 具体的な内容を書く（プレースホルダー禁止）
+4. 不明な数値は「[要確認：具体的な数値]」と明記
 
-【分析結果（これに書かれている改善点のみ実装）】
-{analysis_text[:8000]}
+【既存の見出し（これらと重複しないこと）】
+H2: {', '.join(existing_h2[:10])}
+H3: {', '.join(existing_h3[:10])}
 
-【出力ルール】
-1. 分析で「追加すべき」と書かれた内容をHTML形式で作成
-2. 分析で「不足している」と指摘された内容を補完
-3. 分析に書かれていない内容は追加しない
-4. 具体的な数値が分からない場合は「[要調査：手数料率]」のように明記
+【分析結果の改善指摘】
+{analysis_text[:6000]}
 
-HTMLで出力してください。
+【生成してください】
+分析で「追加すべき」「不足している」と指摘された内容を、以下の優先順位で生成：
+1. 高優先度：具体的な数値・データ・比較表
+2. 中優先度：詳細な説明・手順
+3. 低優先度：補足情報
+
+純粋なHTMLのみ出力（説明文なし）：
 """
             
             resp = self.gemini_model.generate_content(prompt)
@@ -853,17 +867,38 @@ HTMLで出力してください。
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
             html = html.strip()
             
+            # 要確認箇所をハイライト
+            html = re.sub(
+                r'\[要確認：([^\]]+)\]',
+                r'<span style="background-color: yellow; color: red; font-weight: bold;">[要確認：\1]</span>',
+                html
+            )
+            
+            # ラッパーを追加
+            final_html = f"""
+<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #f8fff9;">
+    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ</h2>
+    <p style="color: #666; margin-bottom: 20px;">分析に基づく追加内容です。黄色ハイライト部分は要確認項目です。</p>
+    <div style="border-top: 1px solid #ddd; padding-top: 20px;">
+        {html}
+    </div>
+</div>
+"""
+            
             return {
-                "content": html,
+                "content": final_html,
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "scores": {"length_ratio": 1.0}
+                "scores": {
+                    "length_ratio": 1.0,
+                    "placeholder_count": len(re.findall(r'\[要確認：', html))
+                }
             }
             
         except Exception as e:
             return {
-                "content": f"<p>生成エラー: {str(e)}</p>",
+                "content": f"<div style='color: red;'>生成エラー: {str(e)}</div>",
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -2137,27 +2172,39 @@ def main():
                     display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
 
                     # --- 0: プレビュー（HTMLをそのまま描画） ---
-                    with display_tabs[0]:
-                        # 必要に応じて<br>が無い段落に付与（軽微整形・削除はしない）
-                        preview_html = content
-                        st.markdown("**リライトされた記事のプレビュー:**")
-                        st.markdown(preview_html, unsafe_allow_html=True)
+                    with display_tabs[0]:  # プレビュー
+                        st.markdown("**リライト提案のプレビュー:**")
+                        content = rewrite_data.get('content', '')
+                        
+                        if content and isinstance(content, str):
+                            # 要確認項目の数を表示
+                            placeholder_count = rewrite_data.get('scores', {}).get('placeholder_count', 0)
+                            if placeholder_count > 0:
+                                st.warning(f"⚠️ {placeholder_count}箇所の要確認項目があります")
+                            
+                            st.markdown(content, unsafe_allow_html=True)
+                            
+                            # 実装状況チェックリスト
+                            st.markdown("### 📝 実装チェックリスト")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.checkbox("要確認項目を調査済み", key="check1")
+                                st.checkbox("元記事に統合済み", key="check2")
+                            with col2:
+                                st.checkbox("重複内容を確認済み", key="check3")
+                                st.checkbox("公開準備完了", key="check4")
+                        else:
+                            st.error("コンテンツが生成されませんでした")
+                            with st.expander("デバッグ情報"):
+                                st.write("rewrite_data:", rewrite_data)
 
-                        if scores:
-                            m1, m2, m3, m4, m5 = st.columns(5)
-                            with m1: st.metric("長さ比", f"{scores.get('length_ratio',0)*100:.1f}%")
-                            with m2: st.metric("URL保持",  f"{scores.get('url_keep',0)*100:.0f}%")
-                            with m3: st.metric("数値保持", f"{scores.get('num_keep',0)*100:.0f}%")
-                            with m4: st.metric("日付保持", f"{scores.get('date_keep',0)*100:.0f}%")
-                            with m5: st.metric("固有名詞保持", f"{scores.get('ent_keep',0)*100:.0f}%")
-                            st.caption("※ 基準：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
-
-                    # --- 1: HTMLコード（コピペ用 & ダウンロード） ---
                     with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
                         content = rewrite_data.get('content', '')
+                        if not isinstance(content, str):
+                            content = str(content) if content else ''
                         
-                        if content and isinstance(content, str) and len(content) > 0:
+                        if content:
                             st.code(content, language='html')
                             st.download_button(
                                 label="📥 HTMLファイルとしてダウンロード",
@@ -2167,31 +2214,19 @@ def main():
                             )
                         else:
                             st.error("HTMLコードが生成されませんでした")
-                            st.info("リライトを再実行してください")
-                            
-                            # デバッグ情報表示
-                            with st.expander("デバッグ情報"):
-                                st.write("rewrite_data:", rewrite_data)
-                                report = rewrite_data.get('report', '')
-                                if report:
-                                    st.write("レポート:", report)
 
-
-                    # --- 2: テキストのみ（タグ除去） ---
                     with display_tabs[2]:  # テキストのみ
                         st.markdown("**テキストのみ（タグ除去）:**")
                         import re
                         content = rewrite_data.get('content', '')
+                        if not isinstance(content, str):
+                            content = str(content) if content else ''
                         
-                        # contentが文字列であることを確認
-                        if content and isinstance(content, str):
+                        if content:
                             text_only = re.sub(r'<[^>]+>', '', content)
                             st.text_area("テキスト", text_only, height=500, key="text_only_display")
                         else:
                             st.error("テキストが生成されませんでした")
-                            # デバッグ情報
-                            st.write("content type:", type(content))
-                            st.write("content value:", content)
 
         
 
@@ -2364,4 +2399,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
