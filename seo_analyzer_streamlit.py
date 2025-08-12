@@ -868,6 +868,7 @@ HTMLで出力してください。
                 "scores": {}
             }
 
+
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
         """全体的なAI分析を生成"""
@@ -2362,6 +2363,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
