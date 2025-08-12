@@ -822,40 +822,52 @@ class SEOAnalyzerStreamlit:
             return "Gemini APIが設定されていません"
         
         try:
-            # 追加分のみを生成するプロンプト
+            # 元記事の概要を取得（FAQの有無などを確認）
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # 既存のFAQがあるか確認
+            existing_faq = soup.find_all(['dl', 'div'], class_=lambda x: x and 'faq' in x.lower()) if soup else []
+            has_faq = len(existing_faq) > 0
+            
             prompt = f"""
-以下の分析結果を見て、元記事に追加すべき内容のみをHTML形式で生成してください。
-元記事の内容は一切書かないでください。追加分のみです。
+以下の分析結果を見て、元記事に不足している内容のみをHTML形式で生成してください。
+
+【重要な注意事項】
+- 元記事には既にFAQセクションが{('存在します' if has_faq else '存在しません')}
+- 既存のコンテンツと重複する内容は生成しない
+- 改行は<br>タグを使用（\\nは使わない）
+- 具体的な数値や例は「〇〇」ではなく実際の値を入れる
 
 【キーワード】
 {keyword}
 
-【分析での改善提案（これを元に追加内容を作成）】
-{analysis_text[:5000]}
+【分析での改善提案】
+{analysis_text[:3000]}
 
-【生成してください】
-分析で「不足している」と指摘された内容のみをHTML形式で出力。
-- H2タグ：<h2>見出し</h2>
-- 段落：<p>文章<br></p>
-- リスト：<ul><li>項目</li></ul>
-- 表：<table>...</table>
+【生成ルール】
+1. 分析で明確に「不足」と指摘された内容のみ生成
+2. 既存FAQがある場合、FAQの追加提案は不要
+3. プレースホルダー（〇〇、例1、例2など）は使わない
+4. 実装できないもの（シミュレーター等）は提案しない
 
-元記事への言及は不要。追加部分のみを生成してください。
+追加すべき内容のみをHTML形式で出力してください。
 """
             
             resp = self.gemini_model.generate_content(prompt)
             html = resp.text or ""
             
-            # 後処理
+            # 後処理：\nを<br>に変換
             import re
+            html = re.sub(r'\\n', '<br>', html)
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
             html = html.strip()
             
             # 追加分の前に説明を付ける
             final_html = f"""
-<div style="background-color: #f0f8ff; padding: 20px; margin: 20px 0; border: 2px solid #0066cc;">
-<h2 style="color: #0066cc;">【以下は追加提案内容です】</h2>
-<p>※元記事の適切な位置に追加してください</p>
+<div style="background-color: #fffacd; padding: 15px; margin: 20px 0; border-left: 5px solid #ffd700;">
+<h3 style="color: #333;">📝 追加提案内容</h3>
+<p style="color: #666;">以下は分析に基づく追加提案です。必要に応じて元記事に追加してください。</p>
 </div>
 {html}
 """
@@ -865,7 +877,7 @@ class SEOAnalyzerStreamlit:
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "scores": {"length_ratio": 1.0}  # 追加分なので比率は意味がない
+                "scores": {"length_ratio": 1.0}
             }
             
         except Exception as e:
@@ -876,6 +888,7 @@ class SEOAnalyzerStreamlit:
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "scores": {}
             }
+
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
         """全体的なAI分析を生成"""
@@ -2370,6 +2383,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
