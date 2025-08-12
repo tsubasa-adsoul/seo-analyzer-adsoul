@@ -962,29 +962,31 @@ class SEOAnalyzerStreamlit:
             
             # 最終HTML
             final_html = f"""
-<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #000;">
+<div style="border: 2px solid #28a745; padding: 20px; margin: 20px 0;">
     <h2 style="color: #28a745; margin-bottom: 10px;">✅ リライト分析結果</h2>
     
-    <div style="background: #f8f9fa; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
-        <h3 style="color: #333; font-size: 16px;">📊 記事の現状</h3>
-        <p style="color: #666;"><strong>既存セクション：</strong></p>
-        <ul style="color: #333;">
+    <div style="padding: 15px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #444;">
+        <h3 style="font-size: 16px;">📊 記事の現状</h3>
+        <p><strong>既存セクション：</strong></p>
+        <ul>
             {chr(10).join([f"<li>✅ {section}</li>" for section in existing_sections]) if existing_sections else "<li>なし</li>"}
         </ul>
         
         {f'''
-        <p style="color: #666; margin-top: 15px;"><strong>分析との矛盾：</strong></p>
-        <ul style="color: #d9534f;">
+        <p style="margin-top: 15px;"><strong>分析との矛盾：</strong></p>
+        <ul style="color: #ff6b6b;">
             {chr(10).join([f"<li>⚠️ {c}</li>" for c in contradictions])}
         </ul>
         ''' if contradictions else ''}
     </div>
     
-    {f'<p style="color: #d9534f; font-weight: bold;">⚠️ {placeholder_count}箇所の要確認項目があります</p>' if placeholder_count > 0 else ''}
+    {f'<p style="color: #ff6b6b; font-weight: bold;">⚠️ {placeholder_count}箇所の要確認項目があります</p>' if placeholder_count > 0 else ''}
     
-    <div style="border-top: 1px solid #ddd; padding-top: 20px; color: #000000;">
-        <h3 style="color: #333; font-size: 16px;">📝 追加推奨コンテンツ</h3>
-        {html if html else '<p style="color: #28a745;">元記事は既に充実した内容を含んでいます。大幅な追加は不要です。</p>'}
+    <div style="border-top: 2px solid #28a745; padding-top: 20px;">
+        <h3 style="font-size: 16px;">📝 追加推奨コンテンツ</h3>
+        <div>
+            {html if html else '<p style="color: #28a745; font-weight: bold;">元記事は既に充実した内容を含んでいます。大幅な追加は不要です。</p>'}
+        </div>
     </div>
 </div>
 """
@@ -2487,6 +2489,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
