@@ -1028,9 +1028,16 @@ def main():
         layout="wide"
     )
     
-    # 認証チェック（ここに追加！）
+    # 認証チェック
     if not check_auth():
         st.stop()
+    
+    # セッション変数のクリーンアップ（追加）
+    if 'latest_rewrite' in st.session_state:
+        # 古い変数名を新しい変数名に移行
+        if 'latest_guide' not in st.session_state:
+            st.session_state['latest_guide'] = st.session_state['latest_rewrite']
+        del st.session_state['latest_rewrite']
     
     st.title("🚀 SEO分析ツール - Streamlit版")
     st.markdown("---")
@@ -2097,16 +2104,16 @@ def main():
             else:
                 st.info("まだ分析履歴がありません")
 
-        with tabs[7]:  # AIリライト
-            st.header("✍️ AIリライト機能")
-            st.caption("分析済みの記事をAIがSEO最適化してリライトします")
+        with tabs[7]:  # 実装ガイド
+            st.header("📋 実装ガイド")
+            st.caption("AI分析結果を元に、効率的な記事改善を支援します")
             
             # 履歴読み込み
             history = analyzer.load_analysis_history(site_name=selected_site_name, limit=50)
             
             if history:
                 # 履歴から選択
-                st.subheader("📝 リライトする記事を選択")
+                st.subheader("📝 実装ガイドを作成する記事を選択")
                 
                 # 選択用のリスト作成
                 options = []
@@ -2118,7 +2125,7 @@ def main():
                     "分析履歴から選択",
                     range(len(options)),
                     format_func=lambda x: options[x],
-                    key="rewrite_select"
+                    key="guide_select"
                 )
                 
                 if selected_index is not None:
@@ -2135,89 +2142,101 @@ def main():
                         """)
                     
                     with col2:
-                        if st.button("🔄 リライト実行", type="primary", key="execute_rewrite"):
-                            with st.spinner("記事を取得してリライト中...（30秒程度かかります）"):
+                        if st.button("📋 実装ガイド作成", type="primary", key="execute_guide"):
+                            with st.spinner("実装ガイドを作成中..."):
                                 original_content = analyzer.fetch_article_content(
                                     selected_item['url'],
                                     site['gsc_url']
                                 )
                                 
                                 if original_content['success']:
-                                    # リライト実行
-                                    rewritten = analyzer.rewrite_article_with_ai(
+                                    # 実装ガイド生成
+                                    guide_result = analyzer.rewrite_article_with_ai(
                                         selected_item['keyword'],
                                         selected_item['url'],
                                         original_content,
                                         selected_item['analysis']
                                     )
                                     
-                                    # セッションに保存（修正：そのまま保存）
-                                    st.session_state['latest_rewrite'] = rewritten
+                                    # セッションに保存（変数名変更）
+                                    st.session_state['latest_guide'] = guide_result
                                     
-                                    st.success("✅ リライト完了！")
+                                    st.success("✅ 実装ガイド作成完了！")
                                     st.rerun()
                                 else:
                                     st.error("記事の取得に失敗しました")
                 
-                # リライト結果表示（重複キー完全対策版）
-                if 'latest_rewrite' in st.session_state:
+                # 実装ガイド結果表示（NameError完全対策版）
+                if 'latest_guide' in st.session_state:
                     st.markdown("---")
                     st.subheader("📋 実装ガイド結果")
 
-                    rewrite_data = st.session_state['latest_rewrite']
-                    content_html = rewrite_data.get('content', '')
-                    scores = rewrite_data.get('scores', {})
+                    guide_data = st.session_state['latest_guide']
+                    content_html = guide_data.get('content', '')
+                    scores = guide_data.get('scores', {})
                     
                     # ユニークキー生成
                     unique_key = make_unique_key(
                         "guide", 
-                        rewrite_data.get('url', ''), 
-                        rewrite_data.get('timestamp', datetime.now().strftime("%Y%m%d%H%M%S"))
+                        guide_data.get('url', ''), 
+                        guide_data.get('timestamp', datetime.now().strftime("%Y%m%d%H%M%S"))
                     )
 
-                    st.caption(f"キーワード: {rewrite_data.get('keyword','-')} | 生成日時: {rewrite_data.get('timestamp','-')}")
+                    st.caption(f"キーワード: {guide_data.get('keyword','-')} | 生成日時: {guide_data.get('timestamp','-')}")
 
-                    # ガイド表示
+                    # タブは必ずここで定義してから使用
                     if content_html and isinstance(content_html, str):
-                        st.markdown(content_html, unsafe_allow_html=True)
-                        
-                        # 実装チェックリスト
-                        st.markdown("### ✅ 実装完了チェック")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.checkbox("改善点を理解した", key=make_unique_key("guide_check1", unique_key))
-                            st.checkbox("要確認項目を調査済み", key=make_unique_key("guide_check2", unique_key))
-                        with col2:
-                            st.checkbox("記事に反映済み", key=make_unique_key("guide_check3", unique_key))
-                            st.checkbox("公開準備完了", key=make_unique_key("guide_check4", unique_key))
-                        
-                        # ダウンロード
-                        st.download_button(
-                            label="📥 実装ガイドをダウンロード",
-                            data=content_html.encode('utf-8'),
-                            file_name=f"guide_{rewrite_data.get('keyword','').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                            mime="text/html",
-                            key=make_unique_key("guide_download", unique_key)
-                        )
-                    else:
-                        st.error("ガイドが生成されませんでした")
+                        guide_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
 
-                    with display_tabs[2]:  # テキストのみ
-                        st.markdown("**テキストのみ（タグ除去）:**")
-                        if content_html:
+                        with guide_tabs[0]:  # プレビュー
+                            st.markdown(content_html, unsafe_allow_html=True)
+                            
+                            # 実装チェックリスト
+                            st.markdown("### ✅ 実装完了チェック")
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.checkbox("改善点を理解した", key=make_unique_key("guide_check1", unique_key))
+                                st.checkbox("要確認項目を調査済み", key=make_unique_key("guide_check2", unique_key))
+                            with col2:
+                                st.checkbox("記事に反映済み", key=make_unique_key("guide_check3", unique_key))
+                                st.checkbox("公開準備完了", key=make_unique_key("guide_check4", unique_key))
+
+                        with guide_tabs[1]:  # HTMLコード
+                            st.markdown("**コピー用HTMLコード:**")
+                            st.code(content_html, language='html')
+                            st.download_button(
+                                label="📥 実装ガイドをダウンロード",
+                                data=content_html.encode('utf-8'),
+                                file_name=f"guide_{guide_data.get('keyword','').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                                mime="text/html",
+                                key=make_unique_key("guide_download", unique_key)
+                            )
+
+                        with guide_tabs[2]:  # テキストのみ
+                            st.markdown("**テキストのみ（タグ除去）:**")
                             import re
                             text_only = re.sub(r'<[^>]+>', '', content_html)
                             st.text_area(
                                 "テキスト",
                                 text_only,
                                 height=500,
-                                key=make_unique_key("text_only", unique_key)  # ★エラー原因箇所の修正
+                                key=make_unique_key("guide_text_only", unique_key)
                             )
-                        else:
-                            st.error("テキストが生成されませんでした")
+                    else:
+                        st.error("ガイドが生成されませんでした")
+                        with st.expander("デバッグ情報"):
+                            st.write("guide_data:", guide_data)
 
             else:
                 st.info("まだ分析履歴がありません")
+                st.markdown("""
+                ### 📖 実装ガイドの使い方
+                
+                1. **記事を分析**：他のタブで記事の詳細分析を実行
+                2. **ガイド作成**：分析済みの記事から実装ガイドを生成
+                3. **改善実装**：ガイドに従って記事を改善
+                4. **進捗管理**：チェックリストで実装状況を管理
+                """)
         
 
         with tabs[8]:  # AIチャット
@@ -2389,6 +2408,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
