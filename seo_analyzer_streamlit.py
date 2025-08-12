@@ -820,37 +820,40 @@ class SEOAnalyzerStreamlit:
         if not self.gemini_model:
             return "Gemini APIが設定されていません"
         
-        # 元記事の全文を再取得
         try:
+            # 元記事の全文を取得
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.content, 'html.parser')
             main_content = soup.find('main') or soup.find('article') or soup.find('body')
             original_html = str(main_content) if main_content else ""
-        except:
-            original_html = ""
-        
-        try:
+            
             prompt = f"""
-            以下の元記事HTMLをそのまま使い、分析で指摘された部分のみを追加・改善してください。
+            以下の元記事を、分析結果に基づいて改善してください。
             
-            【絶対厳守ルール】
-            1. 元記事の文章は削除禁止（5chの口コミも、体験談も、全て残す）
-            2. 元記事の構造を維持（見出しの順番も変えない）
-            3. 追加のみ許可、削除は禁止
+            【元記事HTML】
+            {original_html[:30000]}
             
-            【元記事HTML（これをベースに使う）】
-            {original_html[:50000]}
+            【分析での改善指摘】
+            {analysis_text[:5000]}
             
-            【分析での改善指摘（これを追加する）】
-            {analysis_text}
+            【リライト方針】
+            1. 削除OK：冗長な部分、重複、意味のない文章
+            2. 改善OK：文章の質、読みやすさ、情緒的な表現
+            3. 追加必須：分析で指摘された不足要素
+            4. 保持必須：具体的数値、体験談、口コミ、固有名詞
             
-            【作業指示】
-            1. 元記事のHTMLをそのままコピー
-            2. 分析で「不足」と指摘された部分だけを適切な場所に追加
-            3. 文末に<br>を追加して読みやすくする
-            4. それ以外は一切変更しない
+            【出力形式】
+            WordPressにそのまま貼り付けられる完全なHTMLで出力してください：
+            - H1タグ：<h1>タイトル</h1>
+            - H2タグ：<h2>見出し</h2>
+            - H3タグ：<h3>小見出し</h3>
+            - 段落：<p>文章<br></p>
+            - 改行：各文の終わりに<br>
+            - リスト：<ul><li>項目</li></ul>
+            - 強調：<strong>重要部分</strong>
             
-            元記事を尊重し、最小限の追加のみ行ってください。
+            解説や変更サマリーは不要です。
+            リライト後のHTMLのみを出力してください。
             """
             
             response = self.gemini_model.generate_content(prompt)
@@ -858,6 +861,7 @@ class SEOAnalyzerStreamlit:
             
         except Exception as e:
             return f"リライト生成エラー: {str(e)}"
+
 
 
 
@@ -2416,6 +2420,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
