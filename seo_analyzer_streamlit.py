@@ -18,6 +18,16 @@ from safe_rewrite import safe_rewrite, diff_preview
 import requests
 from bs4 import BeautifulSoup
 import time
+import hashlib
+import uuid
+
+def make_unique_key(prefix: str, *parts: str) -> str:
+    """Streamlit重複キー防止用ユニークキー生成"""
+    base = "|".join(str(p) for p in parts if p)
+    if not base:
+        base = str(uuid.uuid4())
+    digest = hashlib.md5(base.encode("utf-8")).hexdigest()[:10]
+    return f"{prefix}_{digest}"
 
 class SEOAnalyzerStreamlit:
     def __init__(self):
@@ -2137,40 +2147,36 @@ def main():
                                         selected_item['analysis']
                                     )
                                     
-                                    # 修正：そのまま保存（ネストさせない）
+                                    # セッションに保存（修正：そのまま保存）
                                     st.session_state['latest_rewrite'] = rewritten
                                     
                                     st.success("✅ リライト完了！")
                                     st.rerun()
                                 else:
                                     st.error("記事の取得に失敗しました")
-
                 
-                # リライト結果表示
-                # リライト結果表示
+                # リライト結果表示（重複キー完全対策版）
                 if 'latest_rewrite' in st.session_state:
-                    import hashlib
-                    
                     st.markdown("---")
                     st.subheader("📄 リライト結果")
 
                     rewrite_data = st.session_state['latest_rewrite']
-                    
-                    # 修正：直接アクセス
                     content_html = rewrite_data.get('content', '')
                     scores = rewrite_data.get('scores', {})
                     
-                    # 修正：確実なユニークキー生成
-                    base_string = f"{rewrite_data.get('url', '')}_{rewrite_data.get('timestamp', datetime.now().strftime('%Y%m%d%H%M%S'))}"
-                    unique_suffix = hashlib.md5(base_string.encode('utf-8')).hexdigest()[:8]
+                    # ユニークキー生成
+                    unique_key = make_unique_key(
+                        "rewrite", 
+                        rewrite_data.get('url', ''), 
+                        rewrite_data.get('timestamp', datetime.now().strftime("%Y%m%d%H%M%S"))
+                    )
 
-                    # メタ情報表示
                     st.caption(f"キーワード: {rewrite_data.get('keyword','-')} | 生成日時: {rewrite_data.get('timestamp','-')}")
 
                     # 警告表示
                     placeholder_count = scores.get('placeholder_count', 0)
                     if placeholder_count > 0:
-                        st.warning(f"⚠️ {placeholder_count}箇所の要確認項目があります（人間による調査・加筆が必要）")
+                        st.warning(f"⚠️ {placeholder_count}箇所の要確認項目があります")
 
                     # タブ表示
                     display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
@@ -2180,19 +2186,16 @@ def main():
                         if content_html and isinstance(content_html, str):
                             st.markdown(content_html, unsafe_allow_html=True)
                             
-                            # 実装状況チェックリスト（全てユニークキー化）
                             st.markdown("### 📝 実装チェックリスト")
                             col1, col2 = st.columns(2)
                             with col1:
-                                st.checkbox("要確認項目を調査済み", key=f"rewrite_check1_{unique_suffix}")
-                                st.checkbox("元記事に統合済み", key=f"rewrite_check2_{unique_suffix}")
+                                st.checkbox("要確認項目を調査済み", key=make_unique_key("check1", unique_key))
+                                st.checkbox("元記事に統合済み", key=make_unique_key("check2", unique_key))
                             with col2:
-                                st.checkbox("重複内容を確認済み", key=f"rewrite_check3_{unique_suffix}")
-                                st.checkbox("公開準備完了", key=f"rewrite_check4_{unique_suffix}")
+                                st.checkbox("重複内容を確認済み", key=make_unique_key("check3", unique_key))
+                                st.checkbox("公開準備完了", key=make_unique_key("check4", unique_key))
                         else:
                             st.error("コンテンツが生成されませんでした")
-                            with st.expander("デバッグ情報"):
-                                st.write("rewrite_data:", rewrite_data)
 
                     with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
@@ -2203,7 +2206,7 @@ def main():
                                 data=content_html.encode('utf-8'),
                                 file_name=f"rewrite_{rewrite_data.get('keyword','article').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                                 mime="text/html",
-                                key=f"rewrite_download_{unique_suffix}"  # ユニークキー
+                                key=make_unique_key("download", unique_key)
                             )
                         else:
                             st.error("HTMLコードが生成されませんでした")
@@ -2214,36 +2217,16 @@ def main():
                             import re
                             text_only = re.sub(r'<[^>]+>', '', content_html)
                             st.text_area(
-                                "テキスト", 
-                                text_only, 
-                                height=500, 
-                                key=f"rewrite_text_only_{unique_suffix}"  # ★これがエラーの原因だった箇所
+                                "テキスト",
+                                text_only,
+                                height=500,
+                                key=make_unique_key("text_only", unique_key)  # ★エラー原因箇所の修正
                             )
                         else:
                             st.error("テキストが生成されませんでした")
 
-                    with display_tabs[2]:  # テキストのみ
-                        st.markdown("**テキストのみ（タグ除去）:**")
-                        if content_html:
-                            import re
-                            text_only = re.sub(r'<[^>]+>', '', content_html)
-                            st.text_area("テキスト", text_only, height=500, key="text_only_display")
-                        else:
-                            st.error("テキストが生成されませんでした")
-
-                    with display_tabs[2]:  # テキストのみ
-                        st.markdown("**テキストのみ（タグ除去）:**")
-                        import re
-                        content = rewrite_data.get('content', '')
-                        if not isinstance(content, str):
-                            content = str(content) if content else ''
-                        
-                        if content:
-                            text_only = re.sub(r'<[^>]+>', '', content)
-                            st.text_area("テキスト", text_only, height=500, key="text_only_display")
-                        else:
-                            st.error("テキストが生成されませんでした")
-
+            else:
+                st.info("まだ分析履歴がありません")
         
 
         with tabs[8]:  # AIチャット
@@ -2415,6 +2398,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
