@@ -821,38 +821,58 @@ class SEOAnalyzerStreamlit:
             return "Gemini APIが設定されていません"
         
         try:
-            # まず元記事を取得して保存
+            # 元記事のHTML取得
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.content, 'html.parser')
+            original_html = str(soup.find('main') or soup.find('article') or soup.find('body'))
             
-            # 元記事のHTMLを保持
-            original_html = str(soup.find('article') or soup.find('main') or soup.find('body'))
-            
-            # 追加コンテンツのみ生成
+            # GPTのプロンプトをそのまま使用（優秀）
             prompt = f"""
-            分析で指摘された改善点の追加コンテンツのみ作成してください：
-            {analysis_text[:3000]}
+あなたはSEO編集者です。以下の**元記事HTML**に対して、**分析結果**で「不足」「追記が必要」と指摘された内容だけを、適切な位置に**追加**してください。
+
+# 絶対厳守ルール
+- 元記事本文の削除・改変・並び替えは**禁止**（句読点含む）。追加のみ許可。
+- 見出しレベル・順序は維持（h2→h3→h4 の階層も維持）。
+- 5chの口コミや体験談も**一切削除禁止**。
+- 出力は**純粋なHTMLのみ**。```やdiff、注釈や説明を混ぜない。
+
+# 元記事HTML（削除禁止・ベースとしてそのまま使う）
+{original_html[:50000]}
+
+# 分析結果（ここで指摘された不足のみ追記）
+{analysis_text[:5000]}
+
+# 出力要件
+- 純粋なHTMLのみを返す
+"""
             
-            HTMLタグで出力（H2、p、ul、tableなど）
-            """
+            resp = self.gemini_model.generate_content(prompt)
+            html = resp.text or ""
             
-            additions = self.gemini_model.generate_content(prompt).text
+            # 後処理（GPTの提案通り）
+            import re
+            html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
+            html = html.strip()
             
-            # 結果を結合
-            return f"""
-            【元記事】
-            {original_html}
+            # スコア計算（簡易版）
+            length_ratio = len(html) / len(original_html) if len(original_html) > 0 else 0
             
-            【追加すべき内容】
-            {additions}
-            
-            ※手動で適切な位置に追加してください
-            """
+            return {
+                "content": html,
+                "keyword": keyword,
+                "url": url,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "scores": {"length_ratio": length_ratio}
+            }
             
         except Exception as e:
-            return f"エラー: {str(e)}"
-
-
+            return {
+                "content": f"リライト生成エラー: {str(e)}",
+                "keyword": keyword,
+                "url": url,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "scores": {}
+            }
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
         """全体的なAI分析を生成"""
@@ -2091,151 +2111,88 @@ def main():
                 
                 # リライト結果表示
                 if 'latest_rewrite' in st.session_state:
+                    from datetime import datetime
+                    import re
                     st.markdown("---")
                     st.subheader("📄 リライト結果")
-                    
+
                     rewrite_data = st.session_state['latest_rewrite']
-                    
-                    # メタ情報
-                    st.caption(f"キーワード: {rewrite_data['keyword']} | 生成日時: {rewrite_data['timestamp']}")
-                    
-                    # タブで表示形式を切り替え
+                    content = rewrite_data.get('content', '') if isinstance(rewrite_data, dict) else ''
+                    scores  = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
+
+                    # メタ
+                    st.caption(f"キーワード: {rewrite_data.get('keyword','-')} | 生成日時: {rewrite_data.get('timestamp','-')}")
+
+                    # 警告（任意条件）
+                    warnings = []
+                    if scores:
+                        if scores.get('length_ratio', 1) < 0.95: warnings.append("本文が圧縮されすぎ（<95%）")
+                        if scores.get('url_keep', 1)   < 0.90:  warnings.append("URLの保持率が不足（<90%）")
+                        if scores.get('num_keep', 1)   < 0.85:  warnings.append("数値の保持率が不足（<85%）")
+                        if scores.get('date_keep', 1)  < 0.85:  warnings.append("日付の保持率が不足（<85%）")
+                        if scores.get('ent_keep', 1)   < 0.80:  warnings.append("固有名詞の保持率が不足（<80%）")
+
+                    if warnings:
+                        st.warning("【警告】改悪の可能性があります：\n- " + "\n- ".join(warnings))
+
+                    # タブ
                     display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
-                    
-                    with display_tabs[0]:  # プレビュー
-                        s = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
-                        if s:
-                            m1, m2, m3, m4, m5 = st.columns(5)
-                            with m1: 
-                                st.metric("長さ比", f"{s.get('length_ratio', 0)*100:.1f}%")
-                            with m2: 
-                                st.metric("URL保持", f"{s.get('url_keep', 0)*100:.0f}%")
-                            with m3: 
-                                st.metric("数値保持", f"{s.get('num_keep', 0)*100:.0f}%")
-                            with m4: 
-                                st.metric("日付保持", f"{s.get('date_keep', 0)*100:.0f}%")
-                            with m5: 
-                                st.metric("固有名詞保持", f"{s.get('ent_keep', 0)*100:.0f}%")
-                            st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
+                    # --- 0: プレビュー（HTMLをそのまま描画） ---
+                    with display_tabs[0]:
+                        # 必要に応じて<br>が無い段落に付与（軽微整形・削除はしない）
+                        preview_html = content
                         st.markdown("**リライトされた記事のプレビュー:**")
-                        # タプルの場合とそうでない場合を処理
-                        content = rewrite_data.get('content')
-                        if isinstance(content, tuple):
-                            # タプルの場合、最初の要素がHTML
-                            html_content = content[0] if len(content) > 0 else ""
-                            scores = content[1] if len(content) > 1 else {}
-                        elif isinstance(content, str):
-                            html_content = content
-                        else:
-                            html_content = ""
-                        
-                        if html_content:
-                            preview_text = html_content.replace('```html', '').replace('```', '')
-                            st.markdown(preview_text, unsafe_allow_html=False)
-                        else:
-                            st.error("リライト内容が見つかりません")
-                    
-                    with display_tabs[1]:  # HTMLコード
-                        st.markdown("**コピー用HTMLコード:**")
-                        content = rewrite_data.get('content')
-                        if isinstance(content, tuple):
-                            html_content = content[0] if len(content) > 0 else ""
-                        elif isinstance(content, str):
-                            html_content = content
-                        else:
-                            html_content = ""
-                        
-                        if html_content:
-                            # HTMLコードから実際のHTMLだけを抽出
-                            if '```html' in html_content:
-                                start = html_content.find('```html') + 7
-                                end = html_content.rfind('```')
-                                if end > start:
-                                    html_content = html_content[start:end].strip()
-                            
-                            st.code(html_content, language='html')
-                            
-                            # コピーボタン
-                            keyword = rewrite_data.get('keyword', 'unknown')
-                            if isinstance(keyword, str):
-                                file_name = f"rewrite_{keyword.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-                            else:
-                                file_name = f"rewrite_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
-                            
-                            try:
-                                st.download_button(
-                                    label="📥 HTMLファイルとしてダウンロード",
-                                    data=html_content,
-                                    file_name=file_name,
-                                    mime="text/html"
-                                )
-                            except Exception as e:
-                                st.error(f"ダウンロードボタンエラー: {e}")
-                        else:
-                            st.error("HTMLコードが見つかりません")
-                            st.info("リライトを再実行してください")
-                    
-                    with display_tabs[2]:  # テキストのみ
-                        st.markdown("**テキストのみ（タグなし）:**")
-                        import re
-                        content = rewrite_data.get('content')
-                        if isinstance(content, tuple):
-                            html_content = content[0] if len(content) > 0 else ""
-                        elif isinstance(content, str):
-                            html_content = content
-                        else:
-                            html_content = ""
-                        
-                        if html_content:
-                            # HTMLタグを除去
-                            text_only = re.sub('<[^<]+?>', '', html_content)
-                            st.text_area("テキスト", text_only, height=500, key="text_only_display")
-                        else:
-                            st.error("テキストが見つかりません")
+                        st.markdown(preview_html, unsafe_allow_html=True)
 
-                    
-                    # アクションボタン
+                        if scores:
+                            m1, m2, m3, m4, m5 = st.columns(5)
+                            with m1: st.metric("長さ比", f"{scores.get('length_ratio',0)*100:.1f}%")
+                            with m2: st.metric("URL保持",  f"{scores.get('url_keep',0)*100:.0f}%")
+                            with m3: st.metric("数値保持", f"{scores.get('num_keep',0)*100:.0f}%")
+                            with m4: st.metric("日付保持", f"{scores.get('date_keep',0)*100:.0f}%")
+                            with m5: st.metric("固有名詞保持", f"{scores.get('ent_keep',0)*100:.0f}%")
+                            st.caption("※ 基準：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
+
+                    # --- 1: HTMLコード（コピペ用 & ダウンロード） ---
+                    with display_tabs[1]:
+                        st.markdown("**コピー用HTMLコード:**")
+                        st.code(content, language='html')
+                        st.download_button(
+                            label="📥 HTMLファイルとしてダウンロード",
+                            data=content.encode('utf-8'),       # ← 文字列をバイトに（tuple事故を防止）
+                            file_name=f"rewrite_{rewrite_data.get('keyword','article').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                            mime="text/html"
+                        )
+
+                    # --- 2: テキストのみ（タグ除去） ---
+                    with display_tabs[2]:
+                        text_only = re.sub(r'<[^>]+>', '', content)
+                        st.text_area("テキスト", text_only, height=500, key="text_only_display")
+
+                    # アクション
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         if st.button("📝 再リライト", key="re_rewrite"):
                             del st.session_state['latest_rewrite']
                             st.rerun()
-                    
+
                     with col2:
                         if st.button("💾 履歴に保存", key="save_rewrite"):
-                            # リライト結果も履歴に保存
                             saved = analyzer.save_analysis_result(
-                                rewrite_data['keyword'],
-                                rewrite_data['url'],
-                                f"【リライト版】\n{rewrite_data['content']}",
+                                rewrite_data.get('keyword','-'),
+                                rewrite_data.get('url','-'),
+                                f"【リライト版】\n{content}",
                                 "AIリライト"
                             )
                             st.success(f"保存しました: {saved}")
-                    
+
                     with col3:
                         if st.button("🗑️ クリア", key="clear_rewrite"):
                             del st.session_state['latest_rewrite']
                             st.rerun()
-                    
-                    # 使い方のヒント
-                    with st.expander("💡 リライト結果の活用方法"):
-                        st.markdown("""
-                        1. **HTMLコード**タブから全体をコピー
-                        2. WordPressなどのCMSのHTMLエディタに貼り付け
-                        3. 必要に応じて画像や内部リンクを追加
-                        4. 公開前に最終チェック
-                        
-                        **ポイント:**
-                        - 生成された内容は必ず人間がレビューしてください
-                        - 事実関係の確認を行ってください
-                        - ブランドトーンに合わせて微調整してください
-                        """)
             else:
                 st.info("まだ分析履歴がありません。先に記事分析を実行してください。")
-
-
-
 
         
 
@@ -2408,6 +2365,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
