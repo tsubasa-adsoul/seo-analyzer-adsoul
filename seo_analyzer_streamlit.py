@@ -821,48 +821,36 @@ class SEOAnalyzerStreamlit:
             return "Gemini APIが設定されていません"
         
         try:
-            # 元記事の全文を取得
+            # まず元記事を取得して保存
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.content, 'html.parser')
-            main_content = soup.find('main') or soup.find('article') or soup.find('body')
-            original_html = str(main_content) if main_content else ""
             
+            # 元記事のHTMLを保持
+            original_html = str(soup.find('article') or soup.find('main') or soup.find('body'))
+            
+            # 追加コンテンツのみ生成
             prompt = f"""
-            以下の元記事を、分析結果に基づいて改善してください。
+            分析で指摘された改善点の追加コンテンツのみ作成してください：
+            {analysis_text[:3000]}
             
-            【元記事HTML】
-            {original_html[:30000]}
-            
-            【分析での改善指摘】
-            {analysis_text[:5000]}
-            
-            【リライト方針】
-            1. 削除OK：冗長な部分、重複、意味のない文章
-            2. 改善OK：文章の質、読みやすさ、情緒的な表現
-            3. 追加必須：分析で指摘された不足要素
-            4. 保持必須：具体的数値、体験談、口コミ、固有名詞
-            
-            【出力形式】
-            WordPressにそのまま貼り付けられる完全なHTMLで出力してください：
-            - H1タグ：<h1>タイトル</h1>
-            - H2タグ：<h2>見出し</h2>
-            - H3タグ：<h3>小見出し</h3>
-            - 段落：<p>文章<br></p>
-            - 改行：各文の終わりに<br>
-            - リスト：<ul><li>項目</li></ul>
-            - 強調：<strong>重要部分</strong>
-            
-            解説や変更サマリーは不要です。
-            リライト後のHTMLのみを出力してください。
+            HTMLタグで出力（H2、p、ul、tableなど）
             """
             
-            response = self.gemini_model.generate_content(prompt)
-            return response.text
+            additions = self.gemini_model.generate_content(prompt).text
+            
+            # 結果を結合
+            return f"""
+            【元記事】
+            {original_html}
+            
+            【追加すべき内容】
+            {additions}
+            
+            ※手動で適切な位置に追加してください
+            """
             
         except Exception as e:
-            return f"リライト生成エラー: {str(e)}"
-
-
+            return f"エラー: {str(e)}"
 
 
     
@@ -2420,6 +2408,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
