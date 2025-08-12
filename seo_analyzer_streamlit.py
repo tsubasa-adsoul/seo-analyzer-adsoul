@@ -962,7 +962,7 @@ class SEOAnalyzerStreamlit:
             
             # 最終HTML
             final_html = f"""
-<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #ffffff;">
+<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #000;">
     <h2 style="color: #28a745; margin-bottom: 10px;">✅ リライト分析結果</h2>
     
     <div style="background: #f8f9fa; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
@@ -2487,6 +2487,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
