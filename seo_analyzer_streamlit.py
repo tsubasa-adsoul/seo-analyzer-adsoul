@@ -2143,8 +2143,9 @@ def main():
                     
                     with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
-                        content = rewrite_data.get('content', '')
-                        if content and isinstance(content, str):
+                        content = rewrite_data.get('content', None)
+                        
+                        if content and isinstance(content, str) and len(content) > 0:
                             st.code(content, language='html')
                             
                             # コピーボタン
@@ -2154,14 +2155,20 @@ def main():
                             else:
                                 file_name = f"rewrite_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
                             
-                            st.download_button(
-                                label="📥 HTMLファイルとしてダウンロード",
-                                data=content,
-                                file_name=file_name,
-                                mime="text/html"
-                            )
+                            # contentが確実に文字列であることを保証
+                            try:
+                                st.download_button(
+                                    label="📥 HTMLファイルとしてダウンロード",
+                                    data=content.encode('utf-8'),  # バイト形式に変換
+                                    file_name=file_name,
+                                    mime="text/html"
+                                )
+                            except Exception as e:
+                                st.error(f"ダウンロードボタンエラー: {e}")
                         else:
                             st.error("HTMLコードが見つかりません")
+                            st.info("リライトを再実行してください")
+
                     
                     with display_tabs[2]:  # テキストのみ
                         st.markdown("**テキストのみ（タグなし）:**")
@@ -2413,6 +2420,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
