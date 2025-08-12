@@ -2132,13 +2132,47 @@ def main():
                             st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
                         st.markdown("**リライトされた記事のプレビュー:**")
-                        # エラー対策：contentが存在しない場合の処理
+                        # エラー対策：contentが文字列であることを確認
                         content = rewrite_data.get('content', '')
-                        if content:
+                        if content and isinstance(content, str):
                             preview_text = content.replace('```html', '').replace('```', '')
                             st.markdown(preview_text, unsafe_allow_html=False)
                         else:
-                            st.error("リライト内容が見つかりません")
+                            st.error(f"リライト内容が見つかりません。データ型: {type(content)}")
+                            st.write("デバッグ情報:", rewrite_data)  # デバッグ用
+                    
+                    with display_tabs[1]:  # HTMLコード
+                        st.markdown("**コピー用HTMLコード:**")
+                        content = rewrite_data.get('content', '')
+                        if content and isinstance(content, str):
+                            st.code(content, language='html')
+                            
+                            # コピーボタン
+                            keyword = rewrite_data.get('keyword', 'unknown')
+                            if isinstance(keyword, str):
+                                file_name = f"rewrite_{keyword.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                            else:
+                                file_name = f"rewrite_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
+                            
+                            st.download_button(
+                                label="📥 HTMLファイルとしてダウンロード",
+                                data=content,
+                                file_name=file_name,
+                                mime="text/html"
+                            )
+                        else:
+                            st.error("HTMLコードが見つかりません")
+                    
+                    with display_tabs[2]:  # テキストのみ
+                        st.markdown("**テキストのみ（タグなし）:**")
+                        import re
+                        content = rewrite_data.get('content', '')
+                        if content and isinstance(content, str):
+                            text_only = re.sub('<[^<]+?>', '', content)
+                            st.text_area("テキスト", text_only, height=500, key="text_only_display")
+                        else:
+                            st.error("テキストが見つかりません")
+
                     
                     with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
@@ -2379,6 +2413,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
