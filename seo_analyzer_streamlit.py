@@ -487,12 +487,11 @@ class SEOAnalyzerStreamlit:
         return low_ctr_high_imp
     
     def fetch_article_content(self, url, base_domain):
-        """記事内容を取得（長文切り捨てを大幅緩和）"""
+        """記事内容を取得（全文取得版）"""
         try:
             if not url.startswith('http'):
                 url = base_domain.rstrip('/') + url
 
-            # 取得
             response = requests.get(url, timeout=15, headers={
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             })
@@ -502,9 +501,9 @@ class SEOAnalyzerStreamlit:
             # タイトル・見出し
             title = soup.find('title').text.strip() if soup.find('title') else ''
             h1 = soup.find('h1').get_text(strip=True) if soup.find('h1') else ''
-            h2_list = [h2.get_text(strip=True) for h2 in soup.find_all('h2')][:50]  # 多めに確保
+            h2_list = [h2.get_text(strip=True) for h2 in soup.find_all('h2')][:50]
 
-            # メインコンテンツ候補を広げる
+            # メインコンテンツを完全取得
             main_content = (
                 soup.find('main') or
                 soup.find('article') or
@@ -521,8 +520,8 @@ class SEOAnalyzerStreamlit:
             else:
                 text = soup.get_text(separator=' ', strip=True)
 
-            # 超長文でも落ちないように一応上限は設ける（大きめ）
-            MAX_LEN = 12000
+            # ★修正：文字数制限を大幅緩和（12000→50000）
+            MAX_LEN = 50000  # 50000文字まで取得
             if len(text) > MAX_LEN:
                 text = text[:MAX_LEN]
 
@@ -530,7 +529,8 @@ class SEOAnalyzerStreamlit:
                 'title': title,
                 'h1': h1,
                 'h2_list': h2_list,
-                'content_preview': text,  # もはや「プレビュー」ではなく“ほぼ全文”
+                'content_preview': text,  # もはやプレビューではなく全文
+                'content_length': len(text),  # 文字数も記録
                 'success': True
             }
 
@@ -539,19 +539,32 @@ class SEOAnalyzerStreamlit:
                 'error': str(e),
                 'success': False
             }
-
     
     def analyze_article_with_ai(self, keyword, url, content, metrics):
-        """AI による記事分析"""
+        """AI による記事分析（全文分析版）"""
         if not self.gemini_model:
             return "Gemini APIが設定されていません"
         
         try:
+            # ★修正：全文を使用（制限を緩和）
+            full_text = content.get('content_preview', '')
+            text_length = len(full_text)
+            
+            # 長すぎる場合は要約版と詳細版に分ける
+            if text_length > 10000:
+                summary_text = full_text[:5000] + "\n...\n" + full_text[-5000:]
+                analysis_mode = "要約版（記事が長いため抜粋）"
+            else:
+                summary_text = full_text
+                analysis_mode = "全文分析"
+            
             prompt = f"""
             SEO専門家として、以下の記事を分析し、検索順位を上げるための具体的な改善提案をしてください。
 
             【検索キーワード】{keyword}
             【URL】{url}
+            【分析モード】{analysis_mode}
+            【記事の文字数】{text_length}文字
             
             【現在のパフォーマンス】
             - クリック数: {metrics.get('clicks', 'N/A')}
@@ -564,18 +577,26 @@ class SEOAnalyzerStreamlit:
             H1: {content.get('h1', 'なし')}
             H2見出し: {', '.join(content.get('h2_list', []))}
 
-            【本文プレビュー】
-            {content.get('content_preview', '')[:1000]}
+            【本文内容（{analysis_mode}）】
+            {summary_text}
+
+            【重要：既存コンテンツの確認】
+            上記の本文を確認して、以下の要素が既に存在するか正確に判断してください：
+            - メリット・デメリット: 本文に含まれているか？
+            - 手順説明: 本文に含まれているか？
+            - FAQ/Q&A: 本文に含まれているか？
+            - 注意点/リスク: 本文に含まれているか？
+            - 比較: 本文に含まれているか？
 
             【分析してください】
-            1. この記事が検索意図を満たしているか評価（具体的に）
-            2. 競合と比較して不足している要素（箇条書き5つ）
+            1. この記事が検索意図を満たしているか評価（既存内容を正確に把握した上で）
+            2. 本当に不足している要素のみ指摘（既存のものは「既に存在」と明記）
             3. タイトルタグの改善案（3つ提示）
-            4. 追加すべきコンテンツセクション（具体的に）
+            4. 追加すべきコンテンツセクション（既存と重複しないもののみ）
             5. 内部リンクの設置提案
             6. 今すぐ実行できる改善アクション（優先順位付き3つ）
 
-            簡潔で実行可能な提案をお願いします。
+            既に存在する内容を「不足」と判断しないよう、本文をよく確認してください。
             """
             
             response = self.gemini_model.generate_content(prompt)
@@ -807,8 +828,8 @@ class SEOAnalyzerStreamlit:
             }
     
     def analyze_article_with_ai_competitive(self, keyword, url, content, metrics):
-        """競合分析を含むAI記事分析（拡張版）"""
-        # 基本的な記事分析
+        """競合分析を含むAI記事分析（全文版）"""
+        # 基本的な記事分析（修正版を使用）
         basic_analysis = self.analyze_article_with_ai(keyword, url, content, metrics)
         
         # 競合分析を実行
@@ -829,7 +850,7 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト（重複を完全防止）"""
+        """分析結果を基に記事をリライト（矛盾を解決）"""
         if not self.gemini_model:
             return {
                 "content": "<p>Gemini APIが設定されていません</p>",
@@ -840,7 +861,7 @@ class SEOAnalyzerStreamlit:
             }
         
         try:
-            # 元記事の完全な内容を再取得（重要）
+            # 元記事の完全な内容を再取得
             response = requests.get(url, timeout=10)
             soup = BeautifulSoup(response.content, 'html.parser')
             
@@ -851,71 +872,76 @@ class SEOAnalyzerStreamlit:
             # 既存セクションの詳細チェック
             existing_sections = []
             
-            # メリット・デメリットチェック
             if 'メリット' in full_text and 'デメリット' in full_text:
-                html = re.sub(r'<h[23]>.*?メリット.*?デメリット.*?</h[23]>.*?(?=<h[23]>|$)', '', html, flags=re.DOTALL | re.IGNORECASE)
-            
-            # 手順チェック
-            if '手順' in full_text or 'ステップ' in full_text or '流れ' in full_text:
+                existing_sections.append("メリット・デメリット")
+            if '手順' in full_text or 'ステップ' in full_text:
                 existing_sections.append("手順説明")
-            
-            # Q&A/FAQチェック
-            if 'Q&A' in full_text or 'よくある質問' in full_text or 'FAQ' in full_text:
+            if 'Q&A' in full_text or 'よくある質問' in full_text:
                 existing_sections.append("FAQ/Q&A")
-            
-            # 注意点/リスクチェック
-            if '注意点' in full_text or 'リスク' in full_text or '危険' in full_text:
+            if '注意点' in full_text or 'リスク' in full_text:
                 existing_sections.append("注意点/リスク")
-            
-            # 業者選びチェック
             if '業者' in full_text and ('選ぶ' in full_text or 'ポイント' in full_text):
                 existing_sections.append("業者選びのポイント")
-            
-            # 他の方法チェック
             if '以外' in full_text and '方法' in full_text:
                 existing_sections.append("代替方法")
             
-            # 分析結果から本当に必要な追加のみを抽出
-            prompt = f"""
-あなたはSEO改善の専門家です。
-以下の元記事に既に存在するセクションは絶対に追加しないでください。
+            # 分析と現実の矛盾を検出
+            analysis_claims = []
+            if 'メリット' in analysis_text and '不足' in analysis_text:
+                analysis_claims.append("メリット・デメリットが不足")
+            if '手順' in analysis_text and '不足' in analysis_text:
+                analysis_claims.append("手順が不足")
+            if 'FAQ' in analysis_text and '不足' in analysis_text:
+                analysis_claims.append("FAQが不足")
+            
+            # 矛盾チェック
+            contradictions = []
+            for claim in analysis_claims:
+                for existing in existing_sections:
+                    if ('メリット' in claim and 'メリット' in existing) or \
+                       ('手順' in claim and '手順' in existing) or \
+                       ('FAQ' in claim and 'FAQ' in existing):
+                        contradictions.append(f"分析：「{claim}」 → 実際：「{existing}」が存在")
+            
+            if contradictions:
+                # 矛盾がある場合の対応
+                prompt = f"""
+分析と実際の記事内容に矛盾があります。
 
-【元記事に既に存在するセクション（これらは追加禁止）】
+【矛盾点】
+{chr(10).join(contradictions)}
+
+【元記事に既に存在するセクション】
 {chr(10).join([f"- {section}" for section in existing_sections])}
 
-【元記事のキーワード出現確認】
-- 「メリット」という単語: {'あり' if 'メリット' in full_text else 'なし'}
-- 「デメリット」という単語: {'あり' if 'デメリット' in full_text else 'なし'}
-- 「手順」という単語: {'あり' if '手順' in full_text else 'なし'}
-- 「Q&A」という単語: {'あり' if 'Q&A' in full_text else 'なし'}
-- 「注意点」という単語: {'あり' if '注意点' in full_text else 'なし'}
-- 「業者」という単語: {'あり' if '業者' in full_text else 'なし'}
-
-【分析結果の要約】
+【分析での改善提案（参考程度に）】
 {analysis_text[:2000]}
 
-【絶対厳守ルール】
-1. 上記の「既に存在するセクション」に含まれるものは一切生成しない
-2. 「あり」と表示されている要素は既に記事に存在するので追加しない
-3. 本当に元記事に存在しない新規情報のみ追加
+【指示】
+分析が「不足」と指摘していても、実際に存在する内容は追加しないでください。
+代わりに以下を検討してください：
 
-【追加可能な内容の例】
-- 最新の統計データや数値情報
-- 具体的な事例（元記事にない場合）
-- 図表で表現すべき比較データ
-- 元記事で触れていない別の観点
+1. 既存セクションの「質の向上」案（より具体的な数値、事例など）
+2. 既存セクションに含まれない「新しい観点」の追加
+3. 最新情報やトレンドの追加
+4. 視覚的要素（表、リストなど）での情報整理
 
-【出力】
-元記事に本当に存在しない内容のみHTMLで生成。
-もし全て既存なら以下を返す：
-<div style="color: #28a745; padding: 20px; background: #f0fff0; border: 2px solid #28a745; border-radius: 5px;">
-<h3>✅ 分析結果</h3>
-<p>元記事は既に以下の内容を含んでいるため、追加不要です：</p>
-<ul>
-{chr(10).join([f"<li>{section}</li>" for section in existing_sections])}
-</ul>
-<p>新規に追加すべきコンテンツはありません。</p>
-</div>
+本当に価値のある追加コンテンツのみ生成してください。
+もし追加すべきものがない場合は、その旨を明記してください。
+"""
+            else:
+                # 矛盾がない場合の通常処理
+                prompt = f"""
+以下の分析結果に基づいて、元記事に不足している内容を追加してください。
+
+【元記事に既に存在するセクション】
+{chr(10).join([f"- {section}" for section in existing_sections])}
+
+【分析での改善提案】
+{analysis_text[:3000]}
+
+【指示】
+既存セクションと重複しない、新規の価値ある内容のみ追加してください。
 """
             
             resp = self.gemini_model.generate_content(prompt)
@@ -926,54 +952,39 @@ class SEOAnalyzerStreamlit:
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
             html = html.replace("\\n", "<br>").strip()
             
-            # 生成されたHTMLが既存コンテンツを含んでいないかチェック
-            generated_lower = html.lower()
-            duplicated = False
-            
-            if existing_sections:
-                for section in existing_sections:
-                    if section == "メリット・デメリット" and ('メリット' in generated_lower and 'デメリット' in generated_lower):
-                        duplicated = True
-                        break
-                    elif section == "手順説明" and '手順' in generated_lower:
-                        duplicated = True
-                        break
-                    elif section == "FAQ/Q&A" and ('q&a' in generated_lower or 'faq' in generated_lower):
-                        duplicated = True
-                        break
-            
-            if duplicated:
-                html = f"""
-<div style="color: #d9534f; padding: 20px; background: #fff5f5; border: 2px solid #d9534f; border-radius: 5px;">
-<h3>⚠️ 重複検出</h3>
-<p>AIが既存コンテンツと重複する内容を生成しました。</p>
-<p>元記事は既に必要な内容を含んでいるため、追加は不要です。</p>
-</div>
-"""
-            
-            # プレースホルダーカウント
+            # プレースホルダー処理
             placeholder_count = len(re.findall(r'\[要確認[：:]', html))
-            
-            # 要確認箇所をハイライト
             html = re.sub(
                 r'\[要確認[：:]([^\]]+)\]',
                 r'<span style="background-color: yellow; color: red; font-weight: bold;">[要確認：\1]</span>',
                 html
             )
             
-            # 最終HTML（背景白、文字黒）
+            # 最終HTML
             final_html = f"""
 <div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #ffffff;">
-    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ（重複チェック済み）</h2>
-    <div style="color: #666; margin-bottom: 15px;">
-        <p><strong>元記事の既存セクション：</strong></p>
+    <h2 style="color: #28a745; margin-bottom: 10px;">✅ リライト分析結果</h2>
+    
+    <div style="background: #f8f9fa; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+        <h3 style="color: #333; font-size: 16px;">📊 記事の現状</h3>
+        <p style="color: #666;"><strong>既存セクション：</strong></p>
         <ul style="color: #333;">
-            {chr(10).join([f"<li>{section}</li>" for section in existing_sections]) if existing_sections else "<li>なし</li>"}
+            {chr(10).join([f"<li>✅ {section}</li>" for section in existing_sections]) if existing_sections else "<li>なし</li>"}
         </ul>
+        
+        {f'''
+        <p style="color: #666; margin-top: 15px;"><strong>分析との矛盾：</strong></p>
+        <ul style="color: #d9534f;">
+            {chr(10).join([f"<li>⚠️ {c}</li>" for c in contradictions])}
+        </ul>
+        ''' if contradictions else ''}
     </div>
+    
     {f'<p style="color: #d9534f; font-weight: bold;">⚠️ {placeholder_count}箇所の要確認項目があります</p>' if placeholder_count > 0 else ''}
+    
     <div style="border-top: 1px solid #ddd; padding-top: 20px; color: #000000;">
-        {html}
+        <h3 style="color: #333; font-size: 16px;">📝 追加推奨コンテンツ</h3>
+        {html if html else '<p style="color: #28a745;">元記事は既に充実した内容を含んでいます。大幅な追加は不要です。</p>'}
     </div>
 </div>
 """
@@ -987,7 +998,7 @@ class SEOAnalyzerStreamlit:
                     "length_ratio": 1.0,
                     "placeholder_count": placeholder_count,
                     "existing_sections": existing_sections,
-                    "duplicated": duplicated
+                    "contradictions": contradictions
                 }
             }
             
@@ -2476,6 +2487,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
