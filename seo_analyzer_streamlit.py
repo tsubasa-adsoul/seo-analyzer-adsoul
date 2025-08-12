@@ -1978,7 +1978,7 @@ def main():
                             st.write(f"**URL:** {analysis['url']}")
                         
                         with col2:
-                            if st.button("削除", key=f"del_{i}"):
+                            if st.button("削除", key=f"del_analysis_{i}"):  # 修正：インデックス付きユニークkey
                                 st.session_state.article_analyses.pop(i)
                                 st.rerun()
                         
@@ -2147,7 +2147,10 @@ def main():
 
                 
                 # リライト結果表示
+                # リライト結果表示
                 if 'latest_rewrite' in st.session_state:
+                    import hashlib
+                    
                     st.markdown("---")
                     st.subheader("📄 リライト結果")
 
@@ -2157,8 +2160,9 @@ def main():
                     content_html = rewrite_data.get('content', '')
                     scores = rewrite_data.get('scores', {})
                     
-                    # 修正：ユニークキー生成（タイムスタンプベース）
-                    unique_suffix = rewrite_data.get('timestamp', datetime.now().strftime("%Y%m%d%H%M%S")).replace(' ', '').replace('-', '').replace(':', '')
+                    # 修正：確実なユニークキー生成
+                    base_string = f"{rewrite_data.get('url', '')}_{rewrite_data.get('timestamp', datetime.now().strftime('%Y%m%d%H%M%S'))}"
+                    unique_suffix = hashlib.md5(base_string.encode('utf-8')).hexdigest()[:8]
 
                     # メタ情報表示
                     st.caption(f"キーワード: {rewrite_data.get('keyword','-')} | 生成日時: {rewrite_data.get('timestamp','-')}")
@@ -2176,7 +2180,7 @@ def main():
                         if content_html and isinstance(content_html, str):
                             st.markdown(content_html, unsafe_allow_html=True)
                             
-                            # 実装状況チェックリスト
+                            # 実装状況チェックリスト（全てユニークキー化）
                             st.markdown("### 📝 実装チェックリスト")
                             col1, col2 = st.columns(2)
                             with col1:
@@ -2199,7 +2203,7 @@ def main():
                                 data=content_html.encode('utf-8'),
                                 file_name=f"rewrite_{rewrite_data.get('keyword','article').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
                                 mime="text/html",
-                                key=f"rewrite_download_{unique_suffix}"
+                                key=f"rewrite_download_{unique_suffix}"  # ユニークキー
                             )
                         else:
                             st.error("HTMLコードが生成されませんでした")
@@ -2209,7 +2213,12 @@ def main():
                         if content_html:
                             import re
                             text_only = re.sub(r'<[^>]+>', '', content_html)
-                            st.text_area("テキスト", text_only, height=500, key=f"rewrite_text_only_{unique_suffix}")
+                            st.text_area(
+                                "テキスト", 
+                                text_only, 
+                                height=500, 
+                                key=f"rewrite_text_only_{unique_suffix}"  # ★これがエラーの原因だった箇所
+                            )
                         else:
                             st.error("テキストが生成されませんでした")
 
@@ -2406,6 +2415,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
