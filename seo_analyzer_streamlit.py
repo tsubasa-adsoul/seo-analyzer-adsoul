@@ -2132,21 +2132,42 @@ def main():
                             st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
                         st.markdown("**リライトされた記事のプレビュー:**")
-                        # エラー対策：contentが文字列であることを確認
-                        content = rewrite_data.get('content', '')
-                        if content and isinstance(content, str):
-                            preview_text = content.replace('```html', '').replace('```', '')
+                        # タプルの場合とそうでない場合を処理
+                        content = rewrite_data.get('content')
+                        if isinstance(content, tuple):
+                            # タプルの場合、最初の要素がHTML
+                            html_content = content[0] if len(content) > 0 else ""
+                            scores = content[1] if len(content) > 1 else {}
+                        elif isinstance(content, str):
+                            html_content = content
+                        else:
+                            html_content = ""
+                        
+                        if html_content:
+                            preview_text = html_content.replace('```html', '').replace('```', '')
                             st.markdown(preview_text, unsafe_allow_html=False)
                         else:
-                            st.error(f"リライト内容が見つかりません。データ型: {type(content)}")
-                            st.write("デバッグ情報:", rewrite_data)  # デバッグ用
+                            st.error("リライト内容が見つかりません")
                     
                     with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
-                        content = rewrite_data.get('content', None)
+                        content = rewrite_data.get('content')
+                        if isinstance(content, tuple):
+                            html_content = content[0] if len(content) > 0 else ""
+                        elif isinstance(content, str):
+                            html_content = content
+                        else:
+                            html_content = ""
                         
-                        if content and isinstance(content, str) and len(content) > 0:
-                            st.code(content, language='html')
+                        if html_content:
+                            # HTMLコードから実際のHTMLだけを抽出
+                            if '```html' in html_content:
+                                start = html_content.find('```html') + 7
+                                end = html_content.rfind('```')
+                                if end > start:
+                                    html_content = html_content[start:end].strip()
+                            
+                            st.code(html_content, language='html')
                             
                             # コピーボタン
                             keyword = rewrite_data.get('keyword', 'unknown')
@@ -2155,11 +2176,10 @@ def main():
                             else:
                                 file_name = f"rewrite_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
                             
-                            # contentが確実に文字列であることを保証
                             try:
                                 st.download_button(
                                     label="📥 HTMLファイルとしてダウンロード",
-                                    data=content.encode('utf-8'),  # バイト形式に変換
+                                    data=html_content,
                                     file_name=file_name,
                                     mime="text/html"
                                 )
@@ -2168,44 +2188,25 @@ def main():
                         else:
                             st.error("HTMLコードが見つかりません")
                             st.info("リライトを再実行してください")
-
                     
                     with display_tabs[2]:  # テキストのみ
                         st.markdown("**テキストのみ（タグなし）:**")
                         import re
-                        content = rewrite_data.get('content', '')
-                        if content and isinstance(content, str):
-                            text_only = re.sub('<[^<]+?>', '', content)
+                        content = rewrite_data.get('content')
+                        if isinstance(content, tuple):
+                            html_content = content[0] if len(content) > 0 else ""
+                        elif isinstance(content, str):
+                            html_content = content
+                        else:
+                            html_content = ""
+                        
+                        if html_content:
+                            # HTMLタグを除去
+                            text_only = re.sub('<[^<]+?>', '', html_content)
                             st.text_area("テキスト", text_only, height=500, key="text_only_display")
                         else:
                             st.error("テキストが見つかりません")
 
-                    
-                    with display_tabs[1]:  # HTMLコード
-                        st.markdown("**コピー用HTMLコード:**")
-                        content = rewrite_data.get('content', '')
-                        if content:
-                            st.code(content, language='html')
-                            
-                            # コピーボタン
-                            st.download_button(
-                                label="📥 HTMLファイルとしてダウンロード",
-                                data=content,
-                                file_name=f"rewrite_{rewrite_data.get('keyword', 'unknown').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                                mime="text/html"
-                            )
-                        else:
-                            st.error("HTMLコードが見つかりません")
-                    
-                    with display_tabs[2]:  # テキストのみ
-                        st.markdown("**テキストのみ（タグなし）:**")
-                        import re
-                        content = rewrite_data.get('content', '')
-                        if content:
-                            text_only = re.sub('<[^<]+?>', '', content)
-                            st.text_area("テキスト", text_only, height=500, key="text_only_display")
-                        else:
-                            st.error("テキストが見つかりません")
                     
                     # アクションボタン
                     col1, col2, col3 = st.columns(3)
@@ -2420,6 +2421,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
