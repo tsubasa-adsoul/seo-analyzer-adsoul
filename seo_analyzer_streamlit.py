@@ -2132,26 +2132,39 @@ def main():
                             st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
                         st.markdown("**リライトされた記事のプレビュー:**")
-                        preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
-                        st.markdown(preview_text, unsafe_allow_html=False)
+                        # エラー対策：contentが存在しない場合の処理
+                        content = rewrite_data.get('content', '')
+                        if content:
+                            preview_text = content.replace('```html', '').replace('```', '')
+                            st.markdown(preview_text, unsafe_allow_html=False)
+                        else:
+                            st.error("リライト内容が見つかりません")
                     
                     with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
-                        st.code(rewrite_data['content'], language='html')
-                        
-                        # コピーボタン
-                        st.download_button(
-                            label="📥 HTMLファイルとしてダウンロード",
-                            data=rewrite_data['content'],
-                            file_name=f"rewrite_{rewrite_data['keyword'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                            mime="text/html"
-                        )
+                        content = rewrite_data.get('content', '')
+                        if content:
+                            st.code(content, language='html')
+                            
+                            # コピーボタン
+                            st.download_button(
+                                label="📥 HTMLファイルとしてダウンロード",
+                                data=content,
+                                file_name=f"rewrite_{rewrite_data.get('keyword', 'unknown').replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                                mime="text/html"
+                            )
+                        else:
+                            st.error("HTMLコードが見つかりません")
                     
                     with display_tabs[2]:  # テキストのみ
                         st.markdown("**テキストのみ（タグなし）:**")
                         import re
-                        text_only = re.sub('<[^<]+?>', '', rewrite_data['content'])
-                        st.text_area("テキスト", text_only, height=500, key="text_only_display")
+                        content = rewrite_data.get('content', '')
+                        if content:
+                            text_only = re.sub('<[^<]+?>', '', content)
+                            st.text_area("テキスト", text_only, height=500, key="text_only_display")
+                        else:
+                            st.error("テキストが見つかりません")
                     
                     # アクションボタン
                     col1, col2, col3 = st.columns(3)
@@ -2366,6 +2379,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
