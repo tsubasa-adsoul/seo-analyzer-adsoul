@@ -2152,46 +2152,46 @@ def main():
                 import re
                 text_only = re.sub('<[^<]+?>', '', rewrite_data['content'])
                 st.text_area("テキスト", text_only, height=500, key="text_only_display")
+            
+            # アクションボタン
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                if st.button("📝 再リライト", key="re_rewrite"):
+                    del st.session_state['latest_rewrite']
+                    st.rerun()
+            
+            with col2:
+                if st.button("💾 履歴に保存", key="save_rewrite"):
+                    # リライト結果も履歴に保存
+                    saved = analyzer.save_analysis_result(
+                        rewrite_data['keyword'],
+                        rewrite_data['url'],
+                        f"【リライト版】\n{rewrite_data['content']}",
+                        "AIリライト"
+                    )
+                    st.success(f"保存しました: {saved}")
+            
+            with col3:
+                if st.button("🗑️ クリア", key="clear_rewrite"):
+                    del st.session_state['latest_rewrite']
+                    st.rerun()
+            
+            # 使い方のヒント
+            with st.expander("💡 リライト結果の活用方法"):
+                st.markdown("""
+                1. **HTMLコード**タブから全体をコピー
+                2. WordPressなどのCMSのHTMLエディタに貼り付け
+                3. 必要に応じて画像や内部リンクを追加
+                4. 公開前に最終チェック
+                
+                **ポイント:**
+                - 生成された内容は必ず人間がレビューしてください
+                - 事実関係の確認を行ってください
+                - ブランドトーンに合わせて微調整してください
+                """)
+        else:
+            st.info("まだ分析履歴がありません。先に記事分析を実行してください。")
 
-                    
-                    # アクションボタン
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        if st.button("📝 再リライト", key="re_rewrite"):
-                            del st.session_state['latest_rewrite']
-                            st.rerun()
-                    
-                    with col2:
-                        if st.button("💾 履歴に保存", key="save_rewrite"):
-                            # リライト結果も履歴に保存
-                            saved = analyzer.save_analysis_result(
-                                rewrite_data['keyword'],
-                                rewrite_data['url'],
-                                f"【リライト版】\n{rewrite_data['content']}",
-                                "AIリライト"
-                            )
-                            st.success(f"保存しました: {saved}")
-                    
-                    with col3:
-                        if st.button("🗑️ クリア", key="clear_rewrite"):
-                            del st.session_state['latest_rewrite']
-                            st.rerun()
-                    
-                    # 使い方のヒント
-                    with st.expander("💡 リライト結果の活用方法"):
-                        st.markdown("""
-                        1. **HTMLコード**タブから全体をコピー
-                        2. WordPressなどのCMSのHTMLエディタに貼り付け
-                        3. 必要に応じて画像や内部リンクを追加
-                        4. 公開前に最終チェック
-                        
-                        **ポイント:**
-                        - 生成された内容は必ず人間がレビューしてください
-                        - 事実関係の確認を行ってください
-                        - ブランドトーンに合わせて微調整してください
-                        """)
-            else:
-                st.info("まだ分析履歴がありません。先に記事分析を実行してください。")
 
 
         
@@ -2365,6 +2365,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
