@@ -474,44 +474,59 @@ class SEOAnalyzerStreamlit:
         return low_ctr_high_imp
     
     def fetch_article_content(self, url, base_domain):
-        """記事内容を取得"""
+        """記事内容を取得（長文切り捨てを大幅緩和）"""
         try:
             if not url.startswith('http'):
                 url = base_domain.rstrip('/') + url
-            
-            response = requests.get(url, timeout=10)
+
+            # 取得
+            response = requests.get(url, timeout=15, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            response.raise_for_status()
             soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # タイトル、見出し、本文を抽出
-            title = soup.find('title').text if soup.find('title') else ''
-            h1 = soup.find('h1').text if soup.find('h1') else ''
-            h2_list = [h2.text.strip() for h2 in soup.find_all('h2')][:5]
-            
-            # メインコンテンツ
+
+            # タイトル・見出し
+            title = soup.find('title').text.strip() if soup.find('title') else ''
+            h1 = soup.find('h1').get_text(strip=True) if soup.find('h1') else ''
+            h2_list = [h2.get_text(strip=True) for h2 in soup.find_all('h2')][:50]  # 多めに確保
+
+            # メインコンテンツ候補を広げる
             main_content = (
-                soup.find('main') or 
-                soup.find('article') or 
-                soup.find('div', class_='content')
+                soup.find('main') or
+                soup.find('article') or
+                soup.find('div', class_='content') or
+                soup.find('div', id='content') or
+                soup.find('div', class_='entry-content') or
+                soup.find('div', class_='post-content') or
+                soup.body
             )
-            
+
+            text = ""
             if main_content:
-                text = main_content.get_text(separator=' ', strip=True)[:2000]
+                text = main_content.get_text(separator=' ', strip=True)
             else:
-                text = soup.get_text(separator=' ', strip=True)[:2000]
-            
+                text = soup.get_text(separator=' ', strip=True)
+
+            # 超長文でも落ちないように一応上限は設ける（大きめ）
+            MAX_LEN = 12000
+            if len(text) > MAX_LEN:
+                text = text[:MAX_LEN]
+
             return {
                 'title': title,
                 'h1': h1,
                 'h2_list': h2_list,
-                'content_preview': text,
+                'content_preview': text,  # もはや「プレビュー」ではなく“ほぼ全文”
                 'success': True
             }
-            
+
         except Exception as e:
             return {
                 'error': str(e),
                 'success': False
             }
+
     
     def analyze_article_with_ai(self, keyword, url, content, metrics):
         """AI による記事分析"""
@@ -801,52 +816,55 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-                """分析結果を基に記事をリライト"""
-                if not self.gemini_model:
-                    return "Gemini APIが設定されていません"
-                
-                try:
-                    prompt = f"""
-                    あなたはSEOライティングの専門家です。以下の元記事を、分析結果に基づいて改善してください。
-                    
-                    【ターゲットキーワード】
-                    {keyword}
-                    
-                    【元の記事URL】
-                    {url}
-                    
-                    【元の記事内容】
-                    タイトル: {original_content.get('title', '')}
-                    H1: {original_content.get('h1', '')}
-                    H2見出し: {', '.join(original_content.get('h2_list', []))}
-                    本文: {original_content.get('content_preview', '')[:3000]}
-                    
-                    【AI分析での改善提案】
-                    {analysis_text}
-                    
-                    【リライト方針】
-                    元記事の構造と内容をベースに、以下の改善のみ行ってください：
-                    
-                    1. 元記事の良い部分（約70%）は残す
-                    2. 分析で指摘された不足部分（約30%）を追加
-                    3. 既存の文章を改善（読みやすさ、具体性、改行追加）
-                    4. 新規セクションは分析で指摘されたものだけ追加
-                    5. 完全な作り直しはNG、あくまで「改良」
-                    
-                    【出力形式】
-                    - 元の文章を活かしながら改善
-                    - 「。」ごとに<br>タグで改行
-                    - FAQは実際の質問と回答をセットで記載
-                    - 不足していた要素を自然に追加
-                    
-                    改善した記事をHTML形式で出力してください。
-                    """
-                    
-                    response = self.gemini_model.generate_content(prompt)
-                    return response.text
-                    
-                except Exception as e:
-                    return f"リライト生成エラー: {str(e)}"
+        """
+        分析結果を基に記事をリライト（安全版：保持要素＋差分検証つき）
+        戻り値: (rewritten_html: str, scores: dict, warned: bool)
+        """
+        if not self.gemini_model:
+            return "Gemini APIが設定されていません", {}, True
+
+        try:
+            original_text = (
+                f"【タイトル】\n{original_content.get('title','')}\n\n"
+                f"【H1】\n{original_content.get('h1','')}\n\n"
+                f"【H2一覧】\n{', '.join(original_content.get('h2_list', []))}\n\n"
+                f"【本文（フルに近い）】\n{original_content.get('content_preview','')}\n"
+            )
+
+            rewritten_html, scores, must_keep_json = safe_rewrite(
+                self.gemini_model,
+                keyword=keyword,
+                original_html_or_text=original_text,
+                ai_suggestions_text=analysis_text,
+                style_guidelines=(
+                    "・削除禁止（必要時は言い換え/追記のみ）"
+                    "・事実改変禁止（数値/日付/URL/固有名詞は変更不可。必要時は〔要確認〕注記付け）"
+                    "・見出しの順序/階層は維持（H2/H3を適切化）"
+                    "・段落ごとの改変は原文の70%以内"
+                    "・冗長回避・既存トーン維持・『この記事では〜』の文言は使わない"
+                ),
+                max_retries=2
+            )
+
+            warnings = []
+            if scores.get("length_ratio", 1) < 0.95: warnings.append("本文が圧縮されすぎ（<95%）")
+            if scores.get("url_keep", 1)   < 0.90: warnings.append("URLの保持率が不足（<90%）")
+            if scores.get("num_keep", 1)   < 0.85: warnings.append("数値の保持率が不足（<85%）")
+            if scores.get("date_keep", 1)  < 0.85: warnings.append("日付の保持率が不足（<85%）")
+            if scores.get("ent_keep", 1)   < 0.80: warnings.append("固有名詞の保持率が不足（<80%）")
+
+            warned = len(warnings) > 0
+            if warned:
+                diff = diff_preview(original_text, rewritten_html)
+                header = "【警告】改悪の可能性があります：\n- " + "\n- ".join(warnings)
+                preview = f"\n\n【差分プレビュー】\n```diff\n{diff}\n```\n\n"
+                rewritten_html = header + preview + rewritten_html
+
+            return rewritten_html, scores, warned
+
+        except Exception as e:
+            return f"リライト生成エラー: {str(e)}", {}, True
+
 
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
@@ -2097,18 +2115,20 @@ def main():
                     # タブで表示形式を切り替え
                     display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
                     
-                    with display_tabs[0]:  # プレビュー
-                        st.markdown("**リライトされた記事のプレビュー:**")
-                        content = rewrite_data['content']
+            with display_tabs[0]:  # プレビュー
+                s = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
+                if s:
+                    m1, m2, m3, m4, m5 = st.columns(5)
+                    with m1: st.metric("長さ比", f"{s.get('length_ratio', 0)*100:.1f}%")
+                    with m2: st.metric("URL保持", f"{s.get('url_keep', 0)*100:.0f}%")
+                    with m3: st.metric("数値保持", f"{s.get('num_keep', 0)*100:.0f}%")
+                    with m4: st.metric("日付保持", f"{s.get('date_keep', 0)*100:.0f}%")
+                    with m5: st.metric("固有名詞保持", f"{s.get('ent_keep', 0)*100:.0f}%")
+                    st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
-                        # safe_rewrite が警告を返している場合（先頭が「【警告】」）
-                        if isinstance(content, str) and content.startswith("【警告】"):
-                            st.warning("品質検証で警告が出ています。差分を確認してから下書き反映してください。")
-                            # diffコードブロックや警告文をそのままテキスト表示
-                            st.markdown(content, unsafe_allow_html=False)
-                        else:
-                            # 問題なければHTMLとしてプレビュー（見た目でチェックしやすい）
-                            st.markdown(content, unsafe_allow_html=True)
+                st.markdown("**リライトされた記事のプレビュー:**")
+                preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
+                st.markdown(preview_text, unsafe_allow_html=False)
 
                     
                     with display_tabs[1]:  # HTMLコード
@@ -2340,6 +2360,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
