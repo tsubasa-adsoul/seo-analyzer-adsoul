@@ -8,6 +8,7 @@ from config_from_spreadsheet import SpreadsheetConfigLoader
 from spreadsheet_logger import SpreadsheetLogger
 import os
 import json
+from datetime import datetime, timedelta
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import google.generativeai as genai
@@ -967,6 +968,7 @@ def check_auth():
         return True
 
 def main():
+    from datetime import datetime, timedelta  
     st.set_page_config(
         page_title="SEO分析ツール - Streamlit版",
         page_icon="🚀",
@@ -2365,6 +2367,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
