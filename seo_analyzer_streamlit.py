@@ -51,7 +51,7 @@ class SEOAnalyzerStreamlit:
         if self.gemini_api_key:
             try:
                 genai.configure(api_key=self.gemini_api_key)
-                self.gemini_model = genai.GenerativeModel('gemini-1.5-flash')
+                self.gemini_model = genai.GenerativeModel('gemini-1.5-pro')
             except Exception as e:
                 st.error(f"Gemini API初期化エラー: {e}")
         
@@ -2156,6 +2156,9 @@ def main():
                     # 修正：直接アクセス
                     content_html = rewrite_data.get('content', '')
                     scores = rewrite_data.get('scores', {})
+                    
+                    # 修正：ユニークキー生成（タイムスタンプベース）
+                    unique_suffix = rewrite_data.get('timestamp', datetime.now().strftime("%Y%m%d%H%M%S")).replace(' ', '').replace('-', '').replace(':', '')
 
                     # メタ情報表示
                     st.caption(f"キーワード: {rewrite_data.get('keyword','-')} | 生成日時: {rewrite_data.get('timestamp','-')}")
@@ -2177,11 +2180,11 @@ def main():
                             st.markdown("### 📝 実装チェックリスト")
                             col1, col2 = st.columns(2)
                             with col1:
-                                st.checkbox("要確認項目を調査済み", key="check1")
-                                st.checkbox("元記事に統合済み", key="check2")
+                                st.checkbox("要確認項目を調査済み", key=f"rewrite_check1_{unique_suffix}")
+                                st.checkbox("元記事に統合済み", key=f"rewrite_check2_{unique_suffix}")
                             with col2:
-                                st.checkbox("重複内容を確認済み", key="check3")
-                                st.checkbox("公開準備完了", key="check4")
+                                st.checkbox("重複内容を確認済み", key=f"rewrite_check3_{unique_suffix}")
+                                st.checkbox("公開準備完了", key=f"rewrite_check4_{unique_suffix}")
                         else:
                             st.error("コンテンツが生成されませんでした")
                             with st.expander("デバッグ情報"):
@@ -2195,10 +2198,20 @@ def main():
                                 label="📥 HTMLファイルとしてダウンロード",
                                 data=content_html.encode('utf-8'),
                                 file_name=f"rewrite_{rewrite_data.get('keyword','article').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                                mime="text/html"
+                                mime="text/html",
+                                key=f"rewrite_download_{unique_suffix}"
                             )
                         else:
                             st.error("HTMLコードが生成されませんでした")
+
+                    with display_tabs[2]:  # テキストのみ
+                        st.markdown("**テキストのみ（タグ除去）:**")
+                        if content_html:
+                            import re
+                            text_only = re.sub(r'<[^>]+>', '', content_html)
+                            st.text_area("テキスト", text_only, height=500, key=f"rewrite_text_only_{unique_suffix}")
+                        else:
+                            st.error("テキストが生成されませんでした")
 
                     with display_tabs[2]:  # テキストのみ
                         st.markdown("**テキストのみ（タグ除去）:**")
@@ -2393,6 +2406,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
