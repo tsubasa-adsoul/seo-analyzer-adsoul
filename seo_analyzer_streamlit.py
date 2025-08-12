@@ -2176,15 +2176,29 @@ def main():
                             st.caption("※ 基準：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
                     # --- 1: HTMLコード（コピペ用 & ダウンロード） ---
-                    with display_tabs[1]:
+                    with display_tabs[1]:  # HTMLコード
                         st.markdown("**コピー用HTMLコード:**")
-                        st.code(content, language='html')
-                        st.download_button(
-                            label="📥 HTMLファイルとしてダウンロード",
-                            data=content.encode('utf-8'),       # ← 文字列をバイトに（tuple事故を防止）
-                            file_name=f"rewrite_{rewrite_data.get('keyword','article').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                            mime="text/html"
-                        )
+                        content = rewrite_data.get('content', '')
+                        
+                        if content and isinstance(content, str) and len(content) > 0:
+                            st.code(content, language='html')
+                            st.download_button(
+                                label="📥 HTMLファイルとしてダウンロード",
+                                data=content.encode('utf-8'),
+                                file_name=f"rewrite_{rewrite_data.get('keyword','article').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                                mime="text/html"
+                            )
+                        else:
+                            st.error("HTMLコードが生成されませんでした")
+                            st.info("リライトを再実行してください")
+                            
+                            # デバッグ情報表示
+                            with st.expander("デバッグ情報"):
+                                st.write("rewrite_data:", rewrite_data)
+                                report = rewrite_data.get('report', '')
+                                if report:
+                                    st.write("レポート:", report)
+
 
                     # --- 2: テキストのみ（タグ除去） ---
                     with display_tabs[2]:
@@ -2386,6 +2400,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
