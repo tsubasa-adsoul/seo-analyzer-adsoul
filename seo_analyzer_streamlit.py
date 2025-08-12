@@ -829,7 +829,7 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト"""
+        """分析結果を基に記事をリライト（記事内容と分析を確実に照合）"""
         if not self.gemini_model:
             return {
                 "content": "<p>Gemini APIが設定されていません</p>",
@@ -840,77 +840,100 @@ class SEOAnalyzerStreamlit:
             }
         
         try:
-            # 元記事のHTML取得（構造確認用）
-            response = requests.get(url, timeout=10)
-            soup = BeautifulSoup(response.content, 'html.parser')
+            # ★修正1: original_contentを活用
+            article_title = original_content.get('title', '')
+            article_h1 = original_content.get('h1', '')
+            article_h2_list = original_content.get('h2_list', [])
+            article_full_text = original_content.get('content_preview', '')
             
-            # 既存の見出しを取得（重複防止）
-            existing_h2 = [h.get_text() for h in soup.find_all('h2')] if soup else []
-            existing_h3 = [h.get_text() for h in soup.find_all('h3')] if soup else []
-            has_faq = bool(soup.select('dl.swell-block-faq, .swell-block-faq'))
+            # ★修正2: 記事の実際の内容を解析
+            content_analysis = f"""
+【元記事の実際の内容】
+タイトル: {article_title}
+H1: {article_h1}
+H2見出し: {', '.join(article_h2_list)}
+
+【本文内容（最初の3000文字）】
+{article_full_text[:3000]}
+
+【記事に含まれる要素の確認】
+- 料金/手数料の記載: {'あり' if '手数料' in article_full_text or '料金' in article_full_text else 'なし'}
+- メリット/おすすめ: {'あり' if 'メリット' in article_full_text or 'おすすめ' in article_full_text else 'なし'}
+- デメリット/注意点: {'あり' if 'デメリット' in article_full_text or '注意点' in article_full_text else 'なし'}
+- 口コミ/評判: {'あり' if '口コミ' in article_full_text or '評判' in article_full_text else 'なし'}
+- FAQ/よくある質問: {'あり' if 'よくある質問' in article_full_text or 'FAQ' in article_full_text else 'なし'}
+- 比較表: {'あり' if '比較' in article_full_text or '他社' in article_full_text else 'なし'}
+"""
             
+            # ★修正3: 分析結果から具体的な改善点を抽出
             prompt = f"""
-あなたは記事の改善アシスタントです。
-以下の分析結果に基づいて、記事に追加すべき具体的なHTMLコンテンツを生成してください。
+あなたはSEO改善アシスタントです。
+以下の元記事の内容と、AI分析の改善提案を照合して、本当に不足している内容だけを追加してください。
 
-【重要な制約】
-- 既存の見出しと重複しない新規コンテンツのみ
-- 既存にFAQがある場合はFAQ追加は不要: {has_faq}
-- JavaScriptやformは使用禁止（プレビューで実行不可）
-- 具体的に書けない場合は「[要確認：〜]」をテキストとして明記
-- 分析で指摘された「不足」「追加すべき」内容に厳密準拠
+{content_analysis}
 
-【既存の見出し（重複禁止）】
-H2: {', '.join(existing_h2[:10])}
-H3: {', '.join(existing_h3[:10])}
+【AI分析での改善提案】
+{analysis_text[:4000]}
 
-【分析結果（不足部分のみ追記）】
-{analysis_text[:6000]}
+【重要な指示】
+1. 元記事の本文に既に存在する内容は絶対に追加しない
+2. 「記事に含まれる要素の確認」で「あり」の項目は追加不要
+3. 分析で「不足」と指摘されても、実際に本文にある場合は無視
+4. 本当に価値のある新規情報のみ追加
+
+【照合チェック】
+分析の各提案について、元記事に存在するか確認してから追加を判断してください：
+- 分析「料金体系の明確化」→ 元記事に料金記載があれば不要
+- 分析「メリット・デメリット」→ 元記事に記載があれば不要
+- 分析「FAQ追加」→ 元記事にFAQがあれば不要
 
 【出力】
-純粋なHTMLのみ（表・箇条書き・段落で構成）
+元記事に本当に不足している内容のみHTMLで生成。
+全て既存の場合は「<p>分析結果と照合した結果、元記事は既に必要な内容を網羅しています。</p>」と返す。
 """
             
             resp = self.gemini_model.generate_content(prompt)
             html = resp.text or ""
             
-            # 後処理：安全化
+            # 後処理
             import re
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
             html = html.replace("\\n", "<br>").strip()
             
-            # Script/Form除去（セキュリティ）
-            html = re.sub(r'(?is)<script.*?>.*?</script>', '', html)
-            html = re.sub(r'(?is)<form.*?>.*?</form>', '', html)
-            html = re.sub(r'\son\w+="[^"]*"', '', html)
+            # プレースホルダーカウント
+            placeholder_count = len(re.findall(r'\[要確認[：:]', html))
             
             # 要確認箇所をハイライト
             html = re.sub(
-                r'\[要確認：([^\]]+)\]',
+                r'\[要確認[：:]([^\]]+)\]',
                 r'<span style="background-color: yellow; color: red; font-weight: bold;">[要確認：\1]</span>',
                 html
             )
             
-            # ラッパーを追加（文字色を修正）
+            # ラッパーを追加（背景白、文字黒）
             final_html = f"""
 <div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #ffffff;">
-    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ</h2>
-    <p style="color: #333; margin-bottom: 20px; font-weight: bold;">分析に基づく追加内容です。黄色ハイライト部分は要確認項目です。</p>
+    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ（元記事と照合済み）</h2>
+    <p style="color: #333; margin-bottom: 10px; font-weight: bold;">
+        元記事の内容と分析結果を照合し、本当に不足している内容のみを提案しています。
+    </p>
+    {f'<p style="color: #d9534f;">⚠️ {placeholder_count}箇所の要確認項目があります（黄色ハイライト部分）</p>' if placeholder_count > 0 else ''}
     <div style="border-top: 1px solid #ddd; padding-top: 20px; color: #000;">
         {html}
     </div>
 </div>
 """
             
-            # 修正：平坦化した辞書を返す
             return {
-                "content": final_html,  # HTML文字列を直接格納
+                "content": final_html,
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "scores": {
                     "length_ratio": 1.0,
-                    "placeholder_count": len(re.findall(r'\[要確認：', final_html))
+                    "placeholder_count": placeholder_count,
+                    "original_length": len(article_full_text),
+                    "used_original": True  # original_contentを使用したフラグ
                 }
             }
             
@@ -922,6 +945,7 @@ H3: {', '.join(existing_h3[:10])}
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "scores": {}
             }
+
 
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
@@ -2398,6 +2422,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
