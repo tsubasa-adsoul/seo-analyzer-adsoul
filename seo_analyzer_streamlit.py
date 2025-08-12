@@ -827,61 +827,58 @@ class SEOAnalyzerStreamlit:
             soup = BeautifulSoup(response.content, 'html.parser')
             original_html = str(soup.find('main') or soup.find('article') or soup.find('body'))
             
-            # GPT提案のプロンプト
+            # さっき動いていた形式のプロンプト
             prompt = f"""
-あなたは既存記事の品質を落とさず、不足点のみ最小限で追記・統合する編集アシスタントです。
-以下の厳守ルールに従い、出力を「最終HTML」と「変更レポート」の2部構成で返してください。
+あなたはSEO編集者です。以下の**元記事HTML**に対して、**分析結果**で「不足」「追記が必要」と指摘された内容だけを、適切な位置に**追加**してください。
 
-【絶対厳守ルール】
-- 元記事の文章・要素は一切削除禁止。順番も変更禁止。追加のみ可。
-- 既存のFAQは既存セクション内に項目追加で対応。
-- URL・数値・固有名詞・日付は可能な限り保持。
-- 追記文末には<br>を付与。
-- 出力1部：純粋なHTMLのみ。
-- 出力2部：変更レポート。
+# 絶対厳守ルール
+- 元記事本文の削除・改変・並び替えは**禁止**（句読点含む）。追加のみ許可。
+- 見出しレベル・順序は維持（h2→h3→h4 の階層も維持）。
+- 5chの口コミや体験談も**一切削除禁止**。
+- 出力は**純粋なHTMLのみ**。```やdiff、注釈や説明を混ぜない。
 
-【元記事HTML】
+# 元記事HTML（削除禁止・ベースとしてそのまま使う）
 {original_html[:50000]}
 
-【分析での改善指摘】
+# 分析結果（ここで指摘された不足のみ追記）
 {analysis_text[:5000]}
 
-【出力フォーマット】
-===FINAL_HTML===
-（統合済みの完成HTMLのみ）
-===END_FINAL_HTML===
-===CHANGE_REPORT===
-追加箇所：
-- [位置] 追加内容の概要
-===END_CHANGE_REPORT===
+# 出力要件
+- 純粋なHTMLのみを返す（コードブロックなし・diffなし）
+- 不足箇所の**追記済み完全版HTML**のみを返す
 """
             
             resp = self.gemini_model.generate_content(prompt)
-            result = resp.text or ""
+            html = resp.text or ""
             
-            # HTMLとレポートを分離
-            html = ""
-            report = ""
-            if "===FINAL_HTML===" in result and "===END_FINAL_HTML===" in result:
-                html_start = result.find("===FINAL_HTML===") + len("===FINAL_HTML===")
-                html_end = result.find("===END_FINAL_HTML===")
-                html = result[html_start:html_end].strip()
+            # 後処理（安全化）
+            import re
+            html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
+            html = re.sub(r"^```diff[\s\S]*?```", "", html, flags=re.IGNORECASE)
+            html = html.strip()
             
-            if "===CHANGE_REPORT===" in result and "===END_CHANGE_REPORT===" in result:
-                report_start = result.find("===CHANGE_REPORT===") + len("===CHANGE_REPORT===")
-                report_end = result.find("===END_CHANGE_REPORT===")
-                report = result[report_start:report_end].strip()
+            # 空の場合の対処
+            if not html:
+                html = "<p>リライト生成に失敗しました。再度お試しください。</p>"
             
-            # 長さ比率計算
+            # スコア計算
             length_ratio = len(html) / len(original_html) if len(original_html) > 0 else 0
             
             return {
                 "content": html,
-                "report": report,  # 追加：変更レポート
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "scores": {"length_ratio": length_ratio}
+            }
+            
+        except Exception as e:
+            return {
+                "content": f"<p>リライト生成エラー: {str(e)}</p>",
+                "keyword": keyword,
+                "url": url,
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "scores": {}
             }
             
         except Exception as e:
@@ -2400,6 +2397,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
