@@ -891,12 +891,12 @@ H3: {', '.join(existing_h3[:10])}
                 html
             )
             
-            # ラッパーを追加
+            # ラッパーを追加（文字色を修正）
             final_html = f"""
-<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #f8fff9;">
+<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #ffffff;">
     <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ</h2>
-    <p style="color: #666; margin-bottom: 20px;">分析に基づく追加内容です。黄色ハイライト部分は要確認項目です。</p>
-    <div style="border-top: 1px solid #ddd; padding-top: 20px;">
+    <p style="color: #333; margin-bottom: 20px; font-weight: bold;">分析に基づく追加内容です。黄色ハイライト部分は要確認項目です。</p>
+    <div style="border-top: 1px solid #ddd; padding-top: 20px; color: #000;">
         {html}
     </div>
 </div>
@@ -2398,6 +2398,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
