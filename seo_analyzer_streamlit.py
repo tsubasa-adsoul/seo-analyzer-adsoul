@@ -817,63 +817,42 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト（追加分のみ生成）"""
+        """分析結果を基に記事をリライト"""
         if not self.gemini_model:
             return "Gemini APIが設定されていません"
         
         try:
-            # 元記事の概要を取得（FAQの有無などを確認）
-            response = requests.get(url, timeout=10)
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # 既存のFAQがあるか確認
-            existing_faq = soup.find_all(['dl', 'div'], class_=lambda x: x and 'faq' in x.lower()) if soup else []
-            has_faq = len(existing_faq) > 0
-            
+            # シンプルに分析結果をそのまま活かす
             prompt = f"""
-以下の分析結果を見て、元記事に不足している内容のみをHTML形式で生成してください。
-
-【重要な注意事項】
-- 元記事には既にFAQセクションが{('存在します' if has_faq else '存在しません')}
-- 既存のコンテンツと重複する内容は生成しない
-- 改行は<br>タグを使用（\\nは使わない）
-- 具体的な数値や例は「〇〇」ではなく実際の値を入れる
+以下の分析結果に書かれている改善提案を、そのままHTML形式で実装してください。
+分析に書かれていないことは追加しないでください。
 
 【キーワード】
 {keyword}
 
-【分析での改善提案】
-{analysis_text[:3000]}
+【分析結果（これに書かれている改善点のみ実装）】
+{analysis_text[:8000]}
 
-【生成ルール】
-1. 分析で明確に「不足」と指摘された内容のみ生成
-2. 既存FAQがある場合、FAQの追加提案は不要
-3. プレースホルダー（〇〇、例1、例2など）は使わない
-4. 実装できないもの（シミュレーター等）は提案しない
+【出力ルール】
+1. 分析で「追加すべき」と書かれた内容をHTML形式で作成
+2. 分析で「不足している」と指摘された内容を補完
+3. 分析に書かれていない内容は追加しない
+4. 具体的な数値が分からない場合は「[要調査：手数料率]」のように明記
 
-追加すべき内容のみをHTML形式で出力してください。
+HTMLで出力してください。
 """
             
             resp = self.gemini_model.generate_content(prompt)
             html = resp.text or ""
             
-            # 後処理：\nを<br>に変換
+            # 後処理
             import re
             html = re.sub(r'\\n', '<br>', html)
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
             html = html.strip()
             
-            # 追加分の前に説明を付ける
-            final_html = f"""
-<div style="background-color: #fffacd; padding: 15px; margin: 20px 0; border-left: 5px solid #ffd700;">
-<h3 style="color: #333;">📝 追加提案内容</h3>
-<p style="color: #666;">以下は分析に基づく追加提案です。必要に応じて元記事に追加してください。</p>
-</div>
-{html}
-"""
-            
             return {
-                "content": final_html,
+                "content": html,
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -882,7 +861,7 @@ class SEOAnalyzerStreamlit:
             
         except Exception as e:
             return {
-                "content": f"<p>追加内容生成エラー: {str(e)}</p>",
+                "content": f"<p>生成エラー: {str(e)}</p>",
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -2383,6 +2362,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
