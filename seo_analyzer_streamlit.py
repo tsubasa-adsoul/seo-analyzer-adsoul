@@ -829,7 +829,7 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト（分析内容を正確に反映）"""
+        """分析結果を基に記事をリライト（重複を完全防止）"""
         if not self.gemini_model:
             return {
                 "content": "<p>Gemini APIが設定されていません</p>",
@@ -840,55 +840,82 @@ class SEOAnalyzerStreamlit:
             }
         
         try:
-            # 元記事の内容を完全に把握
-            article_title = original_content.get('title', '')
-            article_h1 = original_content.get('h1', '')
-            article_h2_list = original_content.get('h2_list', [])
-            article_full_text = original_content.get('content_preview', '')
+            # 元記事の完全な内容を再取得（重要）
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
             
-            # 記事の実際の内容から既存要素を確認
-            existing_elements = {
-                'メリット・デメリット': 'メリット' in article_full_text and 'デメリット' in article_full_text,
-                '手順説明': '手順' in article_full_text or 'ステップ' in article_full_text,
-                'FAQ/Q&A': 'Q&A' in article_full_text or 'よくある質問' in article_full_text,
-                '注意点': '注意点' in article_full_text or 'リスク' in article_full_text,
-                '比較': '比較' in article_full_text or '他社' in article_full_text,
-                '料金/手数料': '手数料' in article_full_text or '料金' in article_full_text,
-            }
+            # 記事全文を確実に取得
+            main_content = soup.find('main') or soup.find('article') or soup.find('body')
+            full_text = main_content.get_text() if main_content else ""
             
-            # 分析結果から本当に不足している要素を抽出
+            # 既存セクションの詳細チェック
+            existing_sections = []
+            
+            # メリット・デメリットチェック
+            if 'メリット' in full_text and 'デメリット' in full_text:
+                html = re.sub(r'<h[23]>.*?メリット.*?デメリット.*?</h[23]>.*?(?=<h[23]>|$)', '', html, flags=re.DOTALL | re.IGNORECASE)
+            
+            # 手順チェック
+            if '手順' in full_text or 'ステップ' in full_text or '流れ' in full_text:
+                existing_sections.append("手順説明")
+            
+            # Q&A/FAQチェック
+            if 'Q&A' in full_text or 'よくある質問' in full_text or 'FAQ' in full_text:
+                existing_sections.append("FAQ/Q&A")
+            
+            # 注意点/リスクチェック
+            if '注意点' in full_text or 'リスク' in full_text or '危険' in full_text:
+                existing_sections.append("注意点/リスク")
+            
+            # 業者選びチェック
+            if '業者' in full_text and ('選ぶ' in full_text or 'ポイント' in full_text):
+                existing_sections.append("業者選びのポイント")
+            
+            # 他の方法チェック
+            if '以外' in full_text and '方法' in full_text:
+                existing_sections.append("代替方法")
+            
+            # 分析結果から本当に必要な追加のみを抽出
             prompt = f"""
 あなたはSEO改善の専門家です。
-以下の元記事の内容と、AI分析の改善提案を厳密に照合して、本当に不足している内容のみを追加してください。
+以下の元記事に既に存在するセクションは絶対に追加しないでください。
 
-【元記事の実際の内容】
-タイトル: {article_title}
-H2見出し: {', '.join(article_h2_list)}
+【元記事に既に存在するセクション（これらは追加禁止）】
+{chr(10).join([f"- {section}" for section in existing_sections])}
 
-【元記事に既に存在する要素】
-{chr(10).join([f"- {key}: {'✅ あり' if value else '❌ なし'}" for key, value in existing_elements.items()])}
+【元記事のキーワード出現確認】
+- 「メリット」という単語: {'あり' if 'メリット' in full_text else 'なし'}
+- 「デメリット」という単語: {'あり' if 'デメリット' in full_text else 'なし'}
+- 「手順」という単語: {'あり' if '手順' in full_text else 'なし'}
+- 「Q&A」という単語: {'あり' if 'Q&A' in full_text else 'なし'}
+- 「注意点」という単語: {'あり' if '注意点' in full_text else 'なし'}
+- 「業者」という単語: {'あり' if '業者' in full_text else 'なし'}
 
-【元記事の本文（抜粋）】
-{article_full_text[:2000]}
+【分析結果の要約】
+{analysis_text[:2000]}
 
-【AI分析での改善提案（これを正確に反映）】
-{analysis_text[:4000]}
+【絶対厳守ルール】
+1. 上記の「既に存在するセクション」に含まれるものは一切生成しない
+2. 「あり」と表示されている要素は既に記事に存在するので追加しない
+3. 本当に元記事に存在しない新規情報のみ追加
 
-【重要な指示】
-1. 分析で「不足している」と明確に指摘された内容のみ追加
-2. 元記事に既に存在する内容（✅マークの項目）は絶対に追加しない
-3. 分析で指摘されていない内容は追加しない
-4. 具体的な数値や事実が不明な場合は[要確認：内容]と明記
-
-【具体的な照合例】
-- 分析「メリット・デメリットが不足」→ 元記事確認 → ✅あり → 追加不要
-- 分析「画像が不足」→ HTMLでは画像追加不可 → スキップ
-- 分析「具体的な手順が不足」→ 元記事確認 → ✅あり → 追加不要
+【追加可能な内容の例】
+- 最新の統計データや数値情報
+- 具体的な事例（元記事にない場合）
+- 図表で表現すべき比較データ
+- 元記事で触れていない別の観点
 
 【出力】
-分析で指摘され、かつ元記事に存在しない内容のみHTMLで生成。
-全て既存の場合は以下を返す：
-<p style="color: #28a745; font-weight: bold;">✅ 元記事は既に分析で指摘された内容を含んでいます。追加すべき新規コンテンツはありません。</p>
+元記事に本当に存在しない内容のみHTMLで生成。
+もし全て既存なら以下を返す：
+<div style="color: #28a745; padding: 20px; background: #f0fff0; border: 2px solid #28a745; border-radius: 5px;">
+<h3>✅ 分析結果</h3>
+<p>元記事は既に以下の内容を含んでいるため、追加不要です：</p>
+<ul>
+{chr(10).join([f"<li>{section}</li>" for section in existing_sections])}
+</ul>
+<p>新規に追加すべきコンテンツはありません。</p>
+</div>
 """
             
             resp = self.gemini_model.generate_content(prompt)
@@ -898,6 +925,31 @@ H2見出し: {', '.join(article_h2_list)}
             import re
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
             html = html.replace("\\n", "<br>").strip()
+            
+            # 生成されたHTMLが既存コンテンツを含んでいないかチェック
+            generated_lower = html.lower()
+            duplicated = False
+            
+            if existing_sections:
+                for section in existing_sections:
+                    if section == "メリット・デメリット" and ('メリット' in generated_lower and 'デメリット' in generated_lower):
+                        duplicated = True
+                        break
+                    elif section == "手順説明" and '手順' in generated_lower:
+                        duplicated = True
+                        break
+                    elif section == "FAQ/Q&A" and ('q&a' in generated_lower or 'faq' in generated_lower):
+                        duplicated = True
+                        break
+            
+            if duplicated:
+                html = f"""
+<div style="color: #d9534f; padding: 20px; background: #fff5f5; border: 2px solid #d9534f; border-radius: 5px;">
+<h3>⚠️ 重複検出</h3>
+<p>AIが既存コンテンツと重複する内容を生成しました。</p>
+<p>元記事は既に必要な内容を含んでいるため、追加は不要です。</p>
+</div>
+"""
             
             # プレースホルダーカウント
             placeholder_count = len(re.findall(r'\[要確認[：:]', html))
@@ -909,18 +961,19 @@ H2見出し: {', '.join(article_h2_list)}
                 html
             )
             
-            # ★重要：背景を白に、文字を黒に修正
+            # 最終HTML（背景白、文字黒）
             final_html = f"""
-<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #000000;">
-    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ（元記事と分析を照合済み）</h2>
-    <p style="color: #333; margin-bottom: 10px; font-weight: bold;">
-        AI分析で指摘された改善点のうち、元記事に不足している内容のみを提案しています。
-    </p>
-    {f'<p style="color: #d9534f; font-weight: bold;">⚠️ {placeholder_count}箇所の要確認項目があります（黄色ハイライト部分）</p>' if placeholder_count > 0 else ''}
-    <div style="border-top: 1px solid #ddd; padding-top: 20px;">
-        <div style="color: #000000 !important;">
-            {html}
-        </div>
+<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #ffffff;">
+    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ（重複チェック済み）</h2>
+    <div style="color: #666; margin-bottom: 15px;">
+        <p><strong>元記事の既存セクション：</strong></p>
+        <ul style="color: #333;">
+            {chr(10).join([f"<li>{section}</li>" for section in existing_sections]) if existing_sections else "<li>なし</li>"}
+        </ul>
+    </div>
+    {f'<p style="color: #d9534f; font-weight: bold;">⚠️ {placeholder_count}箇所の要確認項目があります</p>' if placeholder_count > 0 else ''}
+    <div style="border-top: 1px solid #ddd; padding-top: 20px; color: #000000;">
+        {html}
     </div>
 </div>
 """
@@ -933,9 +986,8 @@ H2見出し: {', '.join(article_h2_list)}
                 "scores": {
                     "length_ratio": 1.0,
                     "placeholder_count": placeholder_count,
-                    "original_length": len(article_full_text),
-                    "used_original": True,
-                    "existing_elements": existing_elements
+                    "existing_sections": existing_sections,
+                    "duplicated": duplicated
                 }
             }
             
@@ -2424,6 +2476,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
