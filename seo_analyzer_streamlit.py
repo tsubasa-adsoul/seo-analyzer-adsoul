@@ -2115,82 +2115,83 @@ def main():
                     # タブで表示形式を切り替え
                     display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
                     
-            with display_tabs[0]:  # プレビュー
-                s = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
-                if s:
-                    m1, m2, m3, m4, m5 = st.columns(5)
-                    with m1: 
-                        st.metric("長さ比", f"{s.get('length_ratio', 0)*100:.1f}%")
-                    with m2: 
-                        st.metric("URL保持", f"{s.get('url_keep', 0)*100:.0f}%")
-                    with m3: 
-                        st.metric("数値保持", f"{s.get('num_keep', 0)*100:.0f}%")
-                    with m4: 
-                        st.metric("日付保持", f"{s.get('date_keep', 0)*100:.0f}%")
-                    with m5: 
-                        st.metric("固有名詞保持", f"{s.get('ent_keep', 0)*100:.0f}%")
-                    st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
+                    with display_tabs[0]:  # プレビュー
+                        s = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
+                        if s:
+                            m1, m2, m3, m4, m5 = st.columns(5)
+                            with m1: 
+                                st.metric("長さ比", f"{s.get('length_ratio', 0)*100:.1f}%")
+                            with m2: 
+                                st.metric("URL保持", f"{s.get('url_keep', 0)*100:.0f}%")
+                            with m3: 
+                                st.metric("数値保持", f"{s.get('num_keep', 0)*100:.0f}%")
+                            with m4: 
+                                st.metric("日付保持", f"{s.get('date_keep', 0)*100:.0f}%")
+                            with m5: 
+                                st.metric("固有名詞保持", f"{s.get('ent_keep', 0)*100:.0f}%")
+                            st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
-                st.markdown("**リライトされた記事のプレビュー:**")
-                preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
-                st.markdown(preview_text, unsafe_allow_html=False)
-            
-            with display_tabs[1]:  # HTMLコード
-                st.markdown("**コピー用HTMLコード:**")
-                st.code(rewrite_data['content'], language='html')
-                
-                # コピーボタン
-                st.download_button(
-                    label="📥 HTMLファイルとしてダウンロード",
-                    data=rewrite_data['content'],
-                    file_name=f"rewrite_{rewrite_data['keyword'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                    mime="text/html"
-                )
-            
-            with display_tabs[2]:  # テキストのみ
-                st.markdown("**テキストのみ（タグなし）:**")
-                import re
-                text_only = re.sub('<[^<]+?>', '', rewrite_data['content'])
-                st.text_area("テキスト", text_only, height=500, key="text_only_display")
-            
-            # アクションボタン
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                if st.button("📝 再リライト", key="re_rewrite"):
-                    del st.session_state['latest_rewrite']
-                    st.rerun()
-            
-            with col2:
-                if st.button("💾 履歴に保存", key="save_rewrite"):
-                    # リライト結果も履歴に保存
-                    saved = analyzer.save_analysis_result(
-                        rewrite_data['keyword'],
-                        rewrite_data['url'],
-                        f"【リライト版】\n{rewrite_data['content']}",
-                        "AIリライト"
-                    )
-                    st.success(f"保存しました: {saved}")
-            
-            with col3:
-                if st.button("🗑️ クリア", key="clear_rewrite"):
-                    del st.session_state['latest_rewrite']
-                    st.rerun()
-            
-            # 使い方のヒント
-            with st.expander("💡 リライト結果の活用方法"):
-                st.markdown("""
-                1. **HTMLコード**タブから全体をコピー
-                2. WordPressなどのCMSのHTMLエディタに貼り付け
-                3. 必要に応じて画像や内部リンクを追加
-                4. 公開前に最終チェック
-                
-                **ポイント:**
-                - 生成された内容は必ず人間がレビューしてください
-                - 事実関係の確認を行ってください
-                - ブランドトーンに合わせて微調整してください
-                """)
-        else:
-            st.info("まだ分析履歴がありません。先に記事分析を実行してください。")
+                        st.markdown("**リライトされた記事のプレビュー:**")
+                        preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
+                        st.markdown(preview_text, unsafe_allow_html=False)
+                    
+                    with display_tabs[1]:  # HTMLコード
+                        st.markdown("**コピー用HTMLコード:**")
+                        st.code(rewrite_data['content'], language='html')
+                        
+                        # コピーボタン
+                        st.download_button(
+                            label="📥 HTMLファイルとしてダウンロード",
+                            data=rewrite_data['content'],
+                            file_name=f"rewrite_{rewrite_data['keyword'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                            mime="text/html"
+                        )
+                    
+                    with display_tabs[2]:  # テキストのみ
+                        st.markdown("**テキストのみ（タグなし）:**")
+                        import re
+                        text_only = re.sub('<[^<]+?>', '', rewrite_data['content'])
+                        st.text_area("テキスト", text_only, height=500, key="text_only_display")
+                    
+                    # アクションボタン
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        if st.button("📝 再リライト", key="re_rewrite"):
+                            del st.session_state['latest_rewrite']
+                            st.rerun()
+                    
+                    with col2:
+                        if st.button("💾 履歴に保存", key="save_rewrite"):
+                            # リライト結果も履歴に保存
+                            saved = analyzer.save_analysis_result(
+                                rewrite_data['keyword'],
+                                rewrite_data['url'],
+                                f"【リライト版】\n{rewrite_data['content']}",
+                                "AIリライト"
+                            )
+                            st.success(f"保存しました: {saved}")
+                    
+                    with col3:
+                        if st.button("🗑️ クリア", key="clear_rewrite"):
+                            del st.session_state['latest_rewrite']
+                            st.rerun()
+                    
+                    # 使い方のヒント
+                    with st.expander("💡 リライト結果の活用方法"):
+                        st.markdown("""
+                        1. **HTMLコード**タブから全体をコピー
+                        2. WordPressなどのCMSのHTMLエディタに貼り付け
+                        3. 必要に応じて画像や内部リンクを追加
+                        4. 公開前に最終チェック
+                        
+                        **ポイント:**
+                        - 生成された内容は必ず人間がレビューしてください
+                        - 事実関係の確認を行ってください
+                        - ブランドトーンに合わせて微調整してください
+                        """)
+            else:
+                st.info("まだ分析履歴がありません。先に記事分析を実行してください。")
+
 
 
 
@@ -2365,6 +2366,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
