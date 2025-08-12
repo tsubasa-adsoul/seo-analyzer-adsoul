@@ -872,8 +872,9 @@ class SEOAnalyzerStreamlit:
 1. 優先度別の改善タスクリスト（HTMLのul/li形式）
 2. 具体的な実装方法（どの部分にどんなコンテンツを追加するか）
 3. 調査が必要な項目は[要確認：内容]と明記
+4. 抽象的な説明ではなく、実装者が迷わない具体的な指示
 
-抽象的な説明ではなく、実装者が迷わない具体的な指示を出力してください。
+HTMLで出力してください。
 """
             
             resp = self.gemini_model.generate_content(prompt)
@@ -2408,6 +2409,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
