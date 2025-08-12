@@ -2134,27 +2134,25 @@ def main():
                 st.markdown("**リライトされた記事のプレビュー:**")
                 preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
                 st.markdown(preview_text, unsafe_allow_html=False)
+            
+            with display_tabs[1]:  # HTMLコード
+                st.markdown("**コピー用HTMLコード:**")
+                st.code(rewrite_data['content'], language='html')
+                
+                # コピーボタン
+                st.download_button(
+                    label="📥 HTMLファイルとしてダウンロード",
+                    data=rewrite_data['content'],
+                    file_name=f"rewrite_{rewrite_data['keyword'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                    mime="text/html"
+                )
+            
+            with display_tabs[2]:  # テキストのみ
+                st.markdown("**テキストのみ（タグなし）:**")
+                import re
+                text_only = re.sub('<[^<]+?>', '', rewrite_data['content'])
+                st.text_area("テキスト", text_only, height=500, key="text_only_display")
 
-
-
-                    
-                    with display_tabs[1]:  # HTMLコード
-                        st.markdown("**コピー用HTMLコード:**")
-                        st.code(rewrite_data['content'], language='html')
-                        
-                        # コピーボタン
-                        st.download_button(
-                            label="📥 HTMLファイルとしてダウンロード",
-                            data=rewrite_data['content'],
-                            file_name=f"rewrite_{rewrite_data['keyword'].replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                            mime="text/html"
-                        )
-                    
-                    with display_tabs[2]:  # テキストのみ
-                        st.markdown("**テキストのみ（タグなし）:**")
-                        import re
-                        text_only = re.sub('<[^<]+?>', '', rewrite_data['content'])
-                        st.text_area("テキスト", text_only, height=500, key="text_only_display")
                     
                     # アクションボタン
                     col1, col2, col3 = st.columns(3)
@@ -2367,6 +2365,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
