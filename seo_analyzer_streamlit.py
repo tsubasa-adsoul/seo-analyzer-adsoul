@@ -829,7 +829,7 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト（記事内容と分析を確実に照合）"""
+        """分析結果を基に記事をリライト（分析内容を正確に反映）"""
         if not self.gemini_model:
             return {
                 "content": "<p>Gemini APIが設定されていません</p>",
@@ -840,56 +840,55 @@ class SEOAnalyzerStreamlit:
             }
         
         try:
-            # ★修正1: original_contentを活用
+            # 元記事の内容を完全に把握
             article_title = original_content.get('title', '')
             article_h1 = original_content.get('h1', '')
             article_h2_list = original_content.get('h2_list', [])
             article_full_text = original_content.get('content_preview', '')
             
-            # ★修正2: 記事の実際の内容を解析
-            content_analysis = f"""
+            # 記事の実際の内容から既存要素を確認
+            existing_elements = {
+                'メリット・デメリット': 'メリット' in article_full_text and 'デメリット' in article_full_text,
+                '手順説明': '手順' in article_full_text or 'ステップ' in article_full_text,
+                'FAQ/Q&A': 'Q&A' in article_full_text or 'よくある質問' in article_full_text,
+                '注意点': '注意点' in article_full_text or 'リスク' in article_full_text,
+                '比較': '比較' in article_full_text or '他社' in article_full_text,
+                '料金/手数料': '手数料' in article_full_text or '料金' in article_full_text,
+            }
+            
+            # 分析結果から本当に不足している要素を抽出
+            prompt = f"""
+あなたはSEO改善の専門家です。
+以下の元記事の内容と、AI分析の改善提案を厳密に照合して、本当に不足している内容のみを追加してください。
+
 【元記事の実際の内容】
 タイトル: {article_title}
-H1: {article_h1}
 H2見出し: {', '.join(article_h2_list)}
 
-【本文内容（最初の3000文字）】
-{article_full_text[:3000]}
+【元記事に既に存在する要素】
+{chr(10).join([f"- {key}: {'✅ あり' if value else '❌ なし'}" for key, value in existing_elements.items()])}
 
-【記事に含まれる要素の確認】
-- 料金/手数料の記載: {'あり' if '手数料' in article_full_text or '料金' in article_full_text else 'なし'}
-- メリット/おすすめ: {'あり' if 'メリット' in article_full_text or 'おすすめ' in article_full_text else 'なし'}
-- デメリット/注意点: {'あり' if 'デメリット' in article_full_text or '注意点' in article_full_text else 'なし'}
-- 口コミ/評判: {'あり' if '口コミ' in article_full_text or '評判' in article_full_text else 'なし'}
-- FAQ/よくある質問: {'あり' if 'よくある質問' in article_full_text or 'FAQ' in article_full_text else 'なし'}
-- 比較表: {'あり' if '比較' in article_full_text or '他社' in article_full_text else 'なし'}
-"""
-            
-            # ★修正3: 分析結果から具体的な改善点を抽出
-            prompt = f"""
-あなたはSEO改善アシスタントです。
-以下の元記事の内容と、AI分析の改善提案を照合して、本当に不足している内容だけを追加してください。
+【元記事の本文（抜粋）】
+{article_full_text[:2000]}
 
-{content_analysis}
-
-【AI分析での改善提案】
+【AI分析での改善提案（これを正確に反映）】
 {analysis_text[:4000]}
 
 【重要な指示】
-1. 元記事の本文に既に存在する内容は絶対に追加しない
-2. 「記事に含まれる要素の確認」で「あり」の項目は追加不要
-3. 分析で「不足」と指摘されても、実際に本文にある場合は無視
-4. 本当に価値のある新規情報のみ追加
+1. 分析で「不足している」と明確に指摘された内容のみ追加
+2. 元記事に既に存在する内容（✅マークの項目）は絶対に追加しない
+3. 分析で指摘されていない内容は追加しない
+4. 具体的な数値や事実が不明な場合は[要確認：内容]と明記
 
-【照合チェック】
-分析の各提案について、元記事に存在するか確認してから追加を判断してください：
-- 分析「料金体系の明確化」→ 元記事に料金記載があれば不要
-- 分析「メリット・デメリット」→ 元記事に記載があれば不要
-- 分析「FAQ追加」→ 元記事にFAQがあれば不要
+【具体的な照合例】
+- 分析「メリット・デメリットが不足」→ 元記事確認 → ✅あり → 追加不要
+- 分析「画像が不足」→ HTMLでは画像追加不可 → スキップ
+- 分析「具体的な手順が不足」→ 元記事確認 → ✅あり → 追加不要
 
 【出力】
-元記事に本当に不足している内容のみHTMLで生成。
-全て既存の場合は「<p>分析結果と照合した結果、元記事は既に必要な内容を網羅しています。</p>」と返す。
+分析で指摘され、かつ元記事に存在しない内容のみHTMLで生成。
+全て既存の場合は以下を返す：
+<p style="color: #28a745; font-weight: bold;">✅ 元記事は既に分析で指摘された内容を含んでいます。追加すべき新規コンテンツはありません。</p>
 """
             
             resp = self.gemini_model.generate_content(prompt)
@@ -910,16 +909,18 @@ H2見出し: {', '.join(article_h2_list)}
                 html
             )
             
-            # ラッパーを追加（背景白、文字黒）
+            # ★重要：背景を白に、文字を黒に修正
             final_html = f"""
-<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #ffffff;">
-    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ（元記事と照合済み）</h2>
+<div style="border: 2px dashed #28a745; padding: 20px; margin: 20px 0; background-color: #000000;">
+    <h2 style="color: #28a745; margin-bottom: 10px;">✅ 追加推奨コンテンツ（元記事と分析を照合済み）</h2>
     <p style="color: #333; margin-bottom: 10px; font-weight: bold;">
-        元記事の内容と分析結果を照合し、本当に不足している内容のみを提案しています。
+        AI分析で指摘された改善点のうち、元記事に不足している内容のみを提案しています。
     </p>
-    {f'<p style="color: #d9534f;">⚠️ {placeholder_count}箇所の要確認項目があります（黄色ハイライト部分）</p>' if placeholder_count > 0 else ''}
-    <div style="border-top: 1px solid #ddd; padding-top: 20px; color: #000;">
-        {html}
+    {f'<p style="color: #d9534f; font-weight: bold;">⚠️ {placeholder_count}箇所の要確認項目があります（黄色ハイライト部分）</p>' if placeholder_count > 0 else ''}
+    <div style="border-top: 1px solid #ddd; padding-top: 20px;">
+        <div style="color: #000000 !important;">
+            {html}
+        </div>
     </div>
 </div>
 """
@@ -933,7 +934,8 @@ H2見出し: {', '.join(article_h2_list)}
                     "length_ratio": 1.0,
                     "placeholder_count": placeholder_count,
                     "original_length": len(article_full_text),
-                    "used_original": True  # original_contentを使用したフラグ
+                    "used_original": True,
+                    "existing_elements": existing_elements
                 }
             }
             
@@ -2422,6 +2424,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
