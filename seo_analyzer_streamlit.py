@@ -816,54 +816,49 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """
-        分析結果を基に記事をリライト（安全版：保持要素＋差分検証つき）
-        戻り値: (rewritten_html: str, scores: dict, warned: bool)
-        """
+        """分析結果を基に記事をリライト"""
         if not self.gemini_model:
-            return "Gemini APIが設定されていません", {}, True
-
+            return "Gemini APIが設定されていません"
+        
+        # 元記事の全文を再取得
         try:
-            original_text = (
-                f"【タイトル】\n{original_content.get('title','')}\n\n"
-                f"【H1】\n{original_content.get('h1','')}\n\n"
-                f"【H2一覧】\n{', '.join(original_content.get('h2_list', []))}\n\n"
-                f"【本文（フルに近い）】\n{original_content.get('content_preview','')}\n"
-            )
-
-            rewritten_html, scores, must_keep_json = safe_rewrite(
-                self.gemini_model,
-                keyword=keyword,
-                original_html_or_text=original_text,
-                ai_suggestions_text=analysis_text,
-                style_guidelines=(
-                    "・削除禁止（必要時は言い換え/追記のみ）"
-                    "・事実改変禁止（数値/日付/URL/固有名詞は変更不可。必要時は〔要確認〕注記付け）"
-                    "・見出しの順序/階層は維持（H2/H3を適切化）"
-                    "・段落ごとの改変は原文の70%以内"
-                    "・冗長回避・既存トーン維持・『この記事では〜』の文言は使わない"
-                ),
-                max_retries=2
-            )
-
-            warnings = []
-            if scores.get("length_ratio", 1) < 0.95: warnings.append("本文が圧縮されすぎ（<95%）")
-            if scores.get("url_keep", 1)   < 0.90: warnings.append("URLの保持率が不足（<90%）")
-            if scores.get("num_keep", 1)   < 0.85: warnings.append("数値の保持率が不足（<85%）")
-            if scores.get("date_keep", 1)  < 0.85: warnings.append("日付の保持率が不足（<85%）")
-            if scores.get("ent_keep", 1)   < 0.80: warnings.append("固有名詞の保持率が不足（<80%）")
-
-            warned = len(warnings) > 0
-            if warned:
-                diff = diff_preview(original_text, rewritten_html)
-                header = "【警告】改悪の可能性があります：\n- " + "\n- ".join(warnings)
-                preview = f"\n\n【差分プレビュー】\n```diff\n{diff}\n```\n\n"
-                rewritten_html = header + preview + rewritten_html
-
-            return rewritten_html, scores, warned
-
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.content, 'html.parser')
+            main_content = soup.find('main') or soup.find('article') or soup.find('body')
+            original_html = str(main_content) if main_content else ""
+        except:
+            original_html = ""
+        
+        try:
+            prompt = f"""
+            以下の元記事HTMLをそのまま使い、分析で指摘された部分のみを追加・改善してください。
+            
+            【絶対厳守ルール】
+            1. 元記事の文章は削除禁止（5chの口コミも、体験談も、全て残す）
+            2. 元記事の構造を維持（見出しの順番も変えない）
+            3. 追加のみ許可、削除は禁止
+            
+            【元記事HTML（これをベースに使う）】
+            {original_html[:50000]}
+            
+            【分析での改善指摘（これを追加する）】
+            {analysis_text}
+            
+            【作業指示】
+            1. 元記事のHTMLをそのままコピー
+            2. 分析で「不足」と指摘された部分だけを適切な場所に追加
+            3. 文末に<br>を追加して読みやすくする
+            4. それ以外は一切変更しない
+            
+            元記事を尊重し、最小限の追加のみ行ってください。
+            """
+            
+            response = self.gemini_model.generate_content(prompt)
+            return response.text
+            
         except Exception as e:
-            return f"リライト生成エラー: {str(e)}", {}, True
+            return f"リライト生成エラー: {str(e)}"
+
 
 
     
@@ -2421,6 +2416,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
