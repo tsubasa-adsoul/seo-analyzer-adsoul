@@ -2119,16 +2119,22 @@ def main():
                 s = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
                 if s:
                     m1, m2, m3, m4, m5 = st.columns(5)
-                    with m1: st.metric("長さ比", f"{s.get('length_ratio', 0)*100:.1f}%")
-                    with m2: st.metric("URL保持", f"{s.get('url_keep', 0)*100:.0f}%")
-                    with m3: st.metric("数値保持", f"{s.get('num_keep', 0)*100:.0f}%")
-                    with m4: st.metric("日付保持", f"{s.get('date_keep', 0)*100:.0f}%")
-                    with m5: st.metric("固有名詞保持", f"{s.get('ent_keep', 0)*100:.0f}%")
+                    with m1: 
+                        st.metric("長さ比", f"{s.get('length_ratio', 0)*100:.1f}%")
+                    with m2: 
+                        st.metric("URL保持", f"{s.get('url_keep', 0)*100:.0f}%")
+                    with m3: 
+                        st.metric("数値保持", f"{s.get('num_keep', 0)*100:.0f}%")
+                    with m4: 
+                        st.metric("日付保持", f"{s.get('date_keep', 0)*100:.0f}%")
+                    with m5: 
+                        st.metric("固有名詞保持", f"{s.get('ent_keep', 0)*100:.0f}%")
                     st.caption("※ 基準（初期）：長さ比≥95%、URL≥90%、数値≥85%、日付≥85%、固有名詞≥80%")
 
                 st.markdown("**リライトされた記事のプレビュー:**")
                 preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
                 st.markdown(preview_text, unsafe_allow_html=False)
+
 
 
                     
@@ -2361,6 +2367,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
