@@ -2115,9 +2115,9 @@ def main():
                     # タブで表示形式を切り替え
                     display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
                     
-                    with display_tabs[0]:  # プレビュー
-                    s = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
-                    if s:
+            with display_tabs[0]:  # プレビュー
+                s = rewrite_data.get('scores', {}) if isinstance(rewrite_data, dict) else {}
+                if s:
                     m1, m2, m3, m4, m5 = st.columns(5)
                     with m1: st.metric("長さ比", f"{s.get('length_ratio', 0)*100:.1f}%")
                     with m2: st.metric("URL保持", f"{s.get('url_keep', 0)*100:.0f}%")
@@ -2129,7 +2129,6 @@ def main():
                 st.markdown("**リライトされた記事のプレビュー:**")
                 preview_text = rewrite_data['content'].replace('```html', '').replace('```', '')
                 st.markdown(preview_text, unsafe_allow_html=False)
-
 
 
                     
@@ -2362,6 +2361,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
