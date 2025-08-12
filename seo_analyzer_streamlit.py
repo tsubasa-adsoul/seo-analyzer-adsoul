@@ -817,74 +817,60 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト"""
+        """分析結果を基に記事をリライト（追加分のみ生成）"""
         if not self.gemini_model:
             return "Gemini APIが設定されていません"
         
         try:
-            # 元記事のHTML取得
-            response = requests.get(url, timeout=10)
-            soup = BeautifulSoup(response.content, 'html.parser')
-            original_html = str(soup.find('main') or soup.find('article') or soup.find('body'))
-            
-            # さっき動いていた形式のプロンプト
+            # 追加分のみを生成するプロンプト
             prompt = f"""
-あなたはSEO編集者です。以下の**元記事HTML**に対して、**分析結果**で「不足」「追記が必要」と指摘された内容だけを、適切な位置に**追加**してください。
+以下の分析結果を見て、元記事に追加すべき内容のみをHTML形式で生成してください。
+元記事の内容は一切書かないでください。追加分のみです。
 
-# 絶対厳守ルール
-- 元記事本文の削除・改変・並び替えは**禁止**（句読点含む）。追加のみ許可。
-- 見出しレベル・順序は維持（h2→h3→h4 の階層も維持）。
-- 5chの口コミや体験談も**一切削除禁止**。
-- 出力は**純粋なHTMLのみ**。```やdiff、注釈や説明を混ぜない。
+【キーワード】
+{keyword}
 
-# 元記事HTML（削除禁止・ベースとしてそのまま使う）
-{original_html[:50000]}
-
-# 分析結果（ここで指摘された不足のみ追記）
+【分析での改善提案（これを元に追加内容を作成）】
 {analysis_text[:5000]}
 
-# 出力要件
-- 純粋なHTMLのみを返す（コードブロックなし・diffなし）
-- 不足箇所の**追記済み完全版HTML**のみを返す
+【生成してください】
+分析で「不足している」と指摘された内容のみをHTML形式で出力。
+- H2タグ：<h2>見出し</h2>
+- 段落：<p>文章<br></p>
+- リスト：<ul><li>項目</li></ul>
+- 表：<table>...</table>
+
+元記事への言及は不要。追加部分のみを生成してください。
 """
             
             resp = self.gemini_model.generate_content(prompt)
             html = resp.text or ""
             
-            # 後処理（安全化）
+            # 後処理
             import re
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
-            html = re.sub(r"^```diff[\s\S]*?```", "", html, flags=re.IGNORECASE)
             html = html.strip()
             
-            # 空の場合の対処
-            if not html:
-                html = "<p>リライト生成に失敗しました。再度お試しください。</p>"
-            
-            # スコア計算
-            length_ratio = len(html) / len(original_html) if len(original_html) > 0 else 0
+            # 追加分の前に説明を付ける
+            final_html = f"""
+<div style="background-color: #f0f8ff; padding: 20px; margin: 20px 0; border: 2px solid #0066cc;">
+<h2 style="color: #0066cc;">【以下は追加提案内容です】</h2>
+<p>※元記事の適切な位置に追加してください</p>
+</div>
+{html}
+"""
             
             return {
-                "content": html,
+                "content": final_html,
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "scores": {"length_ratio": length_ratio}
+                "scores": {"length_ratio": 1.0}  # 追加分なので比率は意味がない
             }
             
         except Exception as e:
             return {
-                "content": f"<p>リライト生成エラー: {str(e)}</p>",
-                "keyword": keyword,
-                "url": url,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "scores": {}
-            }
-            
-        except Exception as e:
-            return {
-                "content": f"リライト生成エラー: {str(e)}",
-                "report": "",
+                "content": f"<p>追加内容生成エラー: {str(e)}</p>",
                 "keyword": keyword,
                 "url": url,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -2384,6 +2370,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
