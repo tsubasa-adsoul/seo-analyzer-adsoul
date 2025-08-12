@@ -26,7 +26,7 @@ def make_unique_key(prefix: str, *parts: str) -> str:
     base = "|".join(str(p) for p in parts if p)
     if not base:
         base = str(uuid.uuid4())
-    digest = hashlib.md5(base.encode("utf-8")).hexdigest()[:10]
+    digest = hashlib.md5(base.encode("utf-8")).hexdigest()[:8]
     return f"{prefix}_{digest}"
 
 class SEOAnalyzerStreamlit:
@@ -850,7 +850,7 @@ class SEOAnalyzerStreamlit:
             return basic_analysis
     
     def rewrite_article_with_ai(self, keyword, url, original_content, analysis_text):
-        """分析結果を基に記事をリライト（矛盾を解決）"""
+        """分析結果を基に実装ガイドを生成"""
         if not self.gemini_model:
             return {
                 "content": "<p>Gemini APIが設定されていません</p>",
@@ -861,87 +861,19 @@ class SEOAnalyzerStreamlit:
             }
         
         try:
-            # 元記事の完全な内容を再取得
-            response = requests.get(url, timeout=10)
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # 記事全文を確実に取得
-            main_content = soup.find('main') or soup.find('article') or soup.find('body')
-            full_text = main_content.get_text() if main_content else ""
-            
-            # 既存セクションの詳細チェック
-            existing_sections = []
-            
-            if 'メリット' in full_text and 'デメリット' in full_text:
-                existing_sections.append("メリット・デメリット")
-            if '手順' in full_text or 'ステップ' in full_text:
-                existing_sections.append("手順説明")
-            if 'Q&A' in full_text or 'よくある質問' in full_text:
-                existing_sections.append("FAQ/Q&A")
-            if '注意点' in full_text or 'リスク' in full_text:
-                existing_sections.append("注意点/リスク")
-            if '業者' in full_text and ('選ぶ' in full_text or 'ポイント' in full_text):
-                existing_sections.append("業者選びのポイント")
-            if '以外' in full_text and '方法' in full_text:
-                existing_sections.append("代替方法")
-            
-            # 分析と現実の矛盾を検出
-            analysis_claims = []
-            if 'メリット' in analysis_text and '不足' in analysis_text:
-                analysis_claims.append("メリット・デメリットが不足")
-            if '手順' in analysis_text and '不足' in analysis_text:
-                analysis_claims.append("手順が不足")
-            if 'FAQ' in analysis_text and '不足' in analysis_text:
-                analysis_claims.append("FAQが不足")
-            
-            # 矛盾チェック
-            contradictions = []
-            for claim in analysis_claims:
-                for existing in existing_sections:
-                    if ('メリット' in claim and 'メリット' in existing) or \
-                       ('手順' in claim and '手順' in existing) or \
-                       ('FAQ' in claim and 'FAQ' in existing):
-                        contradictions.append(f"分析：「{claim}」 → 実際：「{existing}」が存在")
-            
-            if contradictions:
-                # 矛盾がある場合の対応
-                prompt = f"""
-分析と実際の記事内容に矛盾があります。
+            prompt = f"""
+あなたはSEO実装コンサルタントです。
+以下の分析結果を元に、人間が効率的に記事を改善するための実装ガイドを作成してください。
 
-【矛盾点】
-{chr(10).join(contradictions)}
+【分析結果】
+{analysis_text[:5000]}
 
-【元記事に既に存在するセクション】
-{chr(10).join([f"- {section}" for section in existing_sections])}
+【出力指示】
+1. 優先度別の改善タスクリスト（HTMLのul/li形式）
+2. 具体的な実装方法（どの部分にどんなコンテンツを追加するか）
+3. 調査が必要な項目は[要確認：内容]と明記
 
-【分析での改善提案（参考程度に）】
-{analysis_text[:2000]}
-
-【指示】
-分析が「不足」と指摘していても、実際に存在する内容は追加しないでください。
-代わりに以下を検討してください：
-
-1. 既存セクションの「質の向上」案（より具体的な数値、事例など）
-2. 既存セクションに含まれない「新しい観点」の追加
-3. 最新情報やトレンドの追加
-4. 視覚的要素（表、リストなど）での情報整理
-
-本当に価値のある追加コンテンツのみ生成してください。
-もし追加すべきものがない場合は、その旨を明記してください。
-"""
-            else:
-                # 矛盾がない場合の通常処理
-                prompt = f"""
-以下の分析結果に基づいて、元記事に不足している内容を追加してください。
-
-【元記事に既に存在するセクション】
-{chr(10).join([f"- {section}" for section in existing_sections])}
-
-【分析での改善提案】
-{analysis_text[:3000]}
-
-【指示】
-既存セクションと重複しない、新規の価値ある内容のみ追加してください。
+抽象的な説明ではなく、実装者が迷わない具体的な指示を出力してください。
 """
             
             resp = self.gemini_model.generate_content(prompt)
@@ -952,41 +884,25 @@ class SEOAnalyzerStreamlit:
             html = re.sub(r"```(?:html)?|```", "", html, flags=re.IGNORECASE)
             html = html.replace("\\n", "<br>").strip()
             
-            # プレースホルダー処理
+            # プレースホルダーカウント
             placeholder_count = len(re.findall(r'\[要確認[：:]', html))
+            
+            # 要確認箇所をハイライト
             html = re.sub(
                 r'\[要確認[：:]([^\]]+)\]',
                 r'<span style="background-color: yellow; color: red; font-weight: bold;">[要確認：\1]</span>',
                 html
             )
             
-            # 最終HTML
+            # Streamlitテーマに任せる（背景色・文字色指定なし）
             final_html = f"""
 <div style="border: 2px solid #28a745; padding: 20px; margin: 20px 0;">
-    <h2 style="color: #28a745; margin-bottom: 10px;">✅ リライト分析結果</h2>
-    
-    <div style="padding: 15px; margin-bottom: 20px; border-radius: 5px; border: 1px solid #444;">
-        <h3 style="font-size: 16px;">📊 記事の現状</h3>
-        <p><strong>既存セクション：</strong></p>
-        <ul>
-            {chr(10).join([f"<li>✅ {section}</li>" for section in existing_sections]) if existing_sections else "<li>なし</li>"}
-        </ul>
-        
-        {f'''
-        <p style="margin-top: 15px;"><strong>分析との矛盾：</strong></p>
-        <ul style="color: #ff6b6b;">
-            {chr(10).join([f"<li>⚠️ {c}</li>" for c in contradictions])}
-        </ul>
-        ''' if contradictions else ''}
-    </div>
+    <h2 style="color: #28a745; margin-bottom: 10px;">📋 実装ガイド</h2>
     
     {f'<p style="color: #ff6b6b; font-weight: bold;">⚠️ {placeholder_count}箇所の要確認項目があります</p>' if placeholder_count > 0 else ''}
     
     <div style="border-top: 2px solid #28a745; padding-top: 20px;">
-        <h3 style="font-size: 16px;">📝 追加推奨コンテンツ</h3>
-        <div>
-            {html if html else '<p style="color: #28a745; font-weight: bold;">元記事は既に充実した内容を含んでいます。大幅な追加は不要です。</p>'}
-        </div>
+        {html if html else '<p style="color: #28a745; font-weight: bold;">現在の記事は十分な内容を含んでいます。</p>'}
     </div>
 </div>
 """
@@ -998,9 +914,7 @@ class SEOAnalyzerStreamlit:
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "scores": {
                     "length_ratio": 1.0,
-                    "placeholder_count": placeholder_count,
-                    "existing_sections": existing_sections,
-                    "contradictions": contradictions
+                    "placeholder_count": placeholder_count
                 }
             }
             
@@ -1012,7 +926,6 @@ class SEOAnalyzerStreamlit:
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "scores": {}
             }
-
 
     
     def generate_overall_ai_analysis(self, trend_data, performance_data, conversion_data, intent_data):
@@ -2249,7 +2162,7 @@ def main():
                 # リライト結果表示（重複キー完全対策版）
                 if 'latest_rewrite' in st.session_state:
                     st.markdown("---")
-                    st.subheader("📄 リライト結果")
+                    st.subheader("📋 実装ガイド結果")
 
                     rewrite_data = st.session_state['latest_rewrite']
                     content_html = rewrite_data.get('content', '')
@@ -2257,50 +2170,37 @@ def main():
                     
                     # ユニークキー生成
                     unique_key = make_unique_key(
-                        "rewrite", 
+                        "guide", 
                         rewrite_data.get('url', ''), 
                         rewrite_data.get('timestamp', datetime.now().strftime("%Y%m%d%H%M%S"))
                     )
 
                     st.caption(f"キーワード: {rewrite_data.get('keyword','-')} | 生成日時: {rewrite_data.get('timestamp','-')}")
 
-                    # 警告表示
-                    placeholder_count = scores.get('placeholder_count', 0)
-                    if placeholder_count > 0:
-                        st.warning(f"⚠️ {placeholder_count}箇所の要確認項目があります")
-
-                    # タブ表示
-                    display_tabs = st.tabs(["📝 プレビュー", "💻 HTMLコード", "📋 テキストのみ"])
-
-                    with display_tabs[0]:  # プレビュー
-                        st.markdown("**リライト提案のプレビュー:**")
-                        if content_html and isinstance(content_html, str):
-                            st.markdown(content_html, unsafe_allow_html=True)
-                            
-                            st.markdown("### 📝 実装チェックリスト")
-                            col1, col2 = st.columns(2)
-                            with col1:
-                                st.checkbox("要確認項目を調査済み", key=make_unique_key("check1", unique_key))
-                                st.checkbox("元記事に統合済み", key=make_unique_key("check2", unique_key))
-                            with col2:
-                                st.checkbox("重複内容を確認済み", key=make_unique_key("check3", unique_key))
-                                st.checkbox("公開準備完了", key=make_unique_key("check4", unique_key))
-                        else:
-                            st.error("コンテンツが生成されませんでした")
-
-                    with display_tabs[1]:  # HTMLコード
-                        st.markdown("**コピー用HTMLコード:**")
-                        if content_html:
-                            st.code(content_html, language='html')
-                            st.download_button(
-                                label="📥 HTMLファイルとしてダウンロード",
-                                data=content_html.encode('utf-8'),
-                                file_name=f"rewrite_{rewrite_data.get('keyword','article').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                                mime="text/html",
-                                key=make_unique_key("download", unique_key)
-                            )
-                        else:
-                            st.error("HTMLコードが生成されませんでした")
+                    # ガイド表示
+                    if content_html and isinstance(content_html, str):
+                        st.markdown(content_html, unsafe_allow_html=True)
+                        
+                        # 実装チェックリスト
+                        st.markdown("### ✅ 実装完了チェック")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.checkbox("改善点を理解した", key=make_unique_key("guide_check1", unique_key))
+                            st.checkbox("要確認項目を調査済み", key=make_unique_key("guide_check2", unique_key))
+                        with col2:
+                            st.checkbox("記事に反映済み", key=make_unique_key("guide_check3", unique_key))
+                            st.checkbox("公開準備完了", key=make_unique_key("guide_check4", unique_key))
+                        
+                        # ダウンロード
+                        st.download_button(
+                            label="📥 実装ガイドをダウンロード",
+                            data=content_html.encode('utf-8'),
+                            file_name=f"guide_{rewrite_data.get('keyword','').replace(' ','_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                            mime="text/html",
+                            key=make_unique_key("guide_download", unique_key)
+                        )
+                    else:
+                        st.error("ガイドが生成されませんでした")
 
                     with display_tabs[2]:  # テキストのみ
                         st.markdown("**テキストのみ（タグ除去）:**")
@@ -2489,6 +2389,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
