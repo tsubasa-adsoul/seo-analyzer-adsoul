@@ -2198,33 +2198,20 @@ def main():
 
 
                     # --- 2: テキストのみ（タグ除去） ---
-                    with display_tabs[2]:
-                        text_only = re.sub(r'<[^>]+>', '', content)
-                        st.text_area("テキスト", text_only, height=500, key="text_only_display")
-
-                    # アクション
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        if st.button("📝 再リライト", key="re_rewrite"):
-                            del st.session_state['latest_rewrite']
-                            st.rerun()
-
-                    with col2:
-                        if st.button("💾 履歴に保存", key="save_rewrite"):
-                            saved = analyzer.save_analysis_result(
-                                rewrite_data.get('keyword','-'),
-                                rewrite_data.get('url','-'),
-                                f"【リライト版】\n{content}",
-                                "AIリライト"
-                            )
-                            st.success(f"保存しました: {saved}")
-
-                    with col3:
-                        if st.button("🗑️ クリア", key="clear_rewrite"):
-                            del st.session_state['latest_rewrite']
-                            st.rerun()
-            else:
-                st.info("まだ分析履歴がありません。先に記事分析を実行してください。")
+                    with display_tabs[2]:  # テキストのみ
+                        st.markdown("**テキストのみ（タグ除去）:**")
+                        import re
+                        content = rewrite_data.get('content', '')
+                        
+                        # contentが文字列であることを確認
+                        if content and isinstance(content, str):
+                            text_only = re.sub(r'<[^>]+>', '', content)
+                            st.text_area("テキスト", text_only, height=500, key="text_only_display")
+                        else:
+                            st.error("テキストが生成されませんでした")
+                            # デバッグ情報
+                            st.write("content type:", type(content))
+                            st.write("content value:", content)
 
         
 
@@ -2397,6 +2384,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
