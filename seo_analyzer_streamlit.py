@@ -277,6 +277,13 @@ class SEOAnalyzerStreamlit:
                 'position': position
             })
         
+        # ★空でも必ずスキーマを持たせる
+        return pd.DataFrame(
+            data,
+            columns=["query", "page", "clicks", "impressions", "ctr", "position"]
+        )
+
+        
         return pd.DataFrame(data)
     
     def get_ga4_data(self, property_id, start_date, end_date):
@@ -346,7 +353,25 @@ class SEOAnalyzerStreamlit:
         return pd.DataFrame(data)
     
     def analyze_trends(self, current_df, comparison_df, change_threshold=50, min_clicks=5):
-        """トレンド分析"""
+        """トレンド分析（空データ時でも落ちないようにスキーマ保証）"""
+        # 必要列を保証
+        required_cols = ["query", "page", "clicks", "impressions", "ctr", "position"]
+
+        def ensure_schema(df):
+            if df is None:
+                return pd.DataFrame(columns=required_cols)
+            # 無い列は追加
+            for c in required_cols:
+                if c not in df.columns:
+                    df[c] = pd.Series(dtype="object")
+            # 数値列を数値化
+            for c in ["clicks", "impressions", "ctr", "position"]:
+                df[c] = pd.to_numeric(df[c], errors="coerce")
+            return df.fillna(0)
+
+        current_df = ensure_schema(current_df)
+        comparison_df = ensure_schema(comparison_df)
+
         # クエリ別集計
         current_summary = current_df.groupby('query').agg({
             'clicks': 'sum',
@@ -355,44 +380,38 @@ class SEOAnalyzerStreamlit:
             'position': 'mean',
             'page': 'first'
         }).reset_index()
-        
+
         comparison_summary = comparison_df.groupby('query').agg({
             'clicks': 'sum',
             'impressions': 'sum',
             'ctr': 'mean',
             'position': 'mean'
         }).reset_index()
-        
+
         # マージして変化率計算
         merged = pd.merge(
-            current_summary, comparison_summary, 
+            current_summary, comparison_summary,
             on='query', suffixes=('_current', '_comparison'), how='outer'
         ).fillna(0)
-        
-        # 変化率計算
+
         merged['clicks_change'] = merged['clicks_current'] - merged['clicks_comparison']
-        
-        # 変化率の計算を改善
+
+        # 変化率の計算
         def calculate_change_rate(row):
             if row['clicks_comparison'] == 0:
-                if row['clicks_current'] > 0:
-                    return "新規"
-                else:
-                    return 0
-            else:
-                return (row['clicks_change'] / row['clicks_comparison'] * 100)
-        
+                return "新規" if row['clicks_current'] > 0 else 0
+            return (row['clicks_change'] / row['clicks_comparison'] * 100)
+
         merged['clicks_change_rate'] = merged.apply(calculate_change_rate, axis=1)
-        
+
         # 大幅変化キーワード抽出
         def is_significant(row):
             if row['clicks_change_rate'] == "新規":
                 return row['clicks_current'] >= min_clicks
-            else:
-                return (abs(row['clicks_change_rate']) >= change_threshold) and (row['clicks_current'] >= min_clicks)
-        
+            return (abs(row['clicks_change_rate']) >= change_threshold) and (row['clicks_current'] >= min_clicks)
+
         significant_changes = merged[merged.apply(is_significant, axis=1)].sort_values('clicks_change', ascending=False)
-        
+
         # 列名変更
         significant_changes = significant_changes.rename(columns={
             'query': '検索キーワード',
@@ -408,7 +427,7 @@ class SEOAnalyzerStreamlit:
             'clicks_change': 'クリック数変化',
             'clicks_change_rate': '変化率(%)'
         })
-        
+
         return significant_changes
 
     
@@ -1245,6 +1264,12 @@ def main():
         current_gsc = cached_data['current_gsc']
         comparison_gsc = cached_data['comparison_gsc']
         ga4_data = cached_data['ga4_data']
+
+
+        # ★ 追記：データ不足の案内（新規サイトや期間短すぎのとき）
+        if current_gsc is None or comparison_gsc is None or current_gsc.empty or comparison_gsc.empty:
+            st.info("ℹ️ このサイトはSearch Consoleのデータが不足しているため、比較は参考値です。期間を長め（例：直近90日）にすると改善する場合があります。")
+
         
         # 分析実行（キャッシュ利用）
         if 'analysis_results_cache' not in st.session_state:
@@ -2409,6 +2434,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
